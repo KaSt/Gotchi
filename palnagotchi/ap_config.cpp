@@ -172,24 +172,28 @@ void handleSaveConfig() {
     // Simple JSON parsing (avoiding ArduinoJson for minimal dependencies)
     DeviceConfig* config = getConfig();
     
-    // JSON field identifiers and their lengths
+    // JSON field identifiers
     const char* DEVICE_NAME_KEY = "\"device_name\":\"";
-    const int DEVICE_NAME_KEY_LEN = 15;
     const char* BRIGHTNESS_KEY = "\"brightness\":";
-    const int BRIGHTNESS_KEY_LEN = 13;
+    const size_t DEVICE_NAME_KEY_LEN = strlen(DEVICE_NAME_KEY);
+    const size_t BRIGHTNESS_KEY_LEN = strlen(BRIGHTNESS_KEY);
     
     // Parse device_name
-    int name_start = body.indexOf(DEVICE_NAME_KEY) + DEVICE_NAME_KEY_LEN;
-    int name_end = body.indexOf("\"", name_start);
-    if (name_start > DEVICE_NAME_KEY_LEN - 1 && name_end > name_start) {
-      String name = body.substring(name_start, name_end);
-      strncpy(config->device_name, name.c_str(), sizeof(config->device_name) - 1);
-      config->device_name[sizeof(config->device_name) - 1] = '\0';
+    int name_start = body.indexOf(DEVICE_NAME_KEY);
+    if (name_start >= 0) {
+      name_start += DEVICE_NAME_KEY_LEN;
+      int name_end = body.indexOf("\"", name_start);
+      if (name_end > name_start) {
+        String name = body.substring(name_start, name_end);
+        strncpy(config->device_name, name.c_str(), sizeof(config->device_name) - 1);
+        config->device_name[sizeof(config->device_name) - 1] = '\0';
+      }
     }
     
     // Parse brightness with validation
-    int bright_start = body.indexOf(BRIGHTNESS_KEY) + BRIGHTNESS_KEY_LEN;
-    if (bright_start > BRIGHTNESS_KEY_LEN - 1) {
+    int bright_start = body.indexOf(BRIGHTNESS_KEY);
+    if (bright_start >= 0) {
+      bright_start += BRIGHTNESS_KEY_LEN;
       int bright_end = body.indexOf(",", bright_start);
       if (bright_end == -1) {
         bright_end = body.indexOf("}", bright_start);
@@ -206,7 +210,7 @@ void handleSaveConfig() {
     
     // Parse sound_enabled
     int sound_pos = body.indexOf("\"sound_enabled\":");
-    if (sound_pos > 0) {
+    if (sound_pos >= 0) {
       config->sound_enabled = body.indexOf("true", sound_pos) > 0;
     }
     
