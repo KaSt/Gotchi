@@ -172,11 +172,13 @@ void handleSaveConfig() {
     // Simple JSON parsing (avoiding ArduinoJson for minimal dependencies)
     DeviceConfig* config = getConfig();
     
-    // JSON field identifiers
-    const char* DEVICE_NAME_KEY = "\"device_name\":\"";
-    const char* BRIGHTNESS_KEY = "\"brightness\":";
-    const size_t DEVICE_NAME_KEY_LEN = strlen(DEVICE_NAME_KEY);
-    const size_t BRIGHTNESS_KEY_LEN = strlen(BRIGHTNESS_KEY);
+    // JSON field identifiers (compile-time constants)
+    const char DEVICE_NAME_KEY[] = "\"device_name\":\"";
+    const char BRIGHTNESS_KEY[] = "\"brightness\":";
+    const char SOUND_ENABLED_KEY[] = "\"sound_enabled\":";
+    const size_t DEVICE_NAME_KEY_LEN = sizeof(DEVICE_NAME_KEY) - 1;
+    const size_t BRIGHTNESS_KEY_LEN = sizeof(BRIGHTNESS_KEY) - 1;
+    const size_t SOUND_ENABLED_KEY_LEN = sizeof(SOUND_ENABLED_KEY) - 1;
     
     // Parse device_name
     int name_start = body.indexOf(DEVICE_NAME_KEY);
@@ -209,9 +211,18 @@ void handleSaveConfig() {
     }
     
     // Parse sound_enabled
-    int sound_pos = body.indexOf("\"sound_enabled\":");
-    if (sound_pos >= 0) {
-      config->sound_enabled = body.indexOf("true", sound_pos) > 0;
+    int sound_start = body.indexOf(SOUND_ENABLED_KEY);
+    if (sound_start >= 0) {
+      sound_start += SOUND_ENABLED_KEY_LEN;
+      int sound_end = body.indexOf(",", sound_start);
+      if (sound_end == -1) {
+        sound_end = body.indexOf("}", sound_start);
+      }
+      if (sound_end > sound_start) {
+        String sound_value = body.substring(sound_start, sound_end);
+        sound_value.trim();
+        config->sound_enabled = (sound_value == "true");
+      }
     }
     
     saveConfig();
