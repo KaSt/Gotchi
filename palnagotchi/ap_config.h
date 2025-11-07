@@ -16,5 +16,6 @@ void startAPMode();
 void stopAPMode();
 void handleAPConfig();
 bool isAPModeActive();
+bool shouldExitAPMode();
 
 #endif

@@ -360,7 +360,7 @@ void drawAPConfigMenu() {
 void drawMenu() {
   // Check if in AP config mode
   uint8_t device_state = getDeviceState();
-  if (device_state == 2) {  // STATE_AP_CONFIG
+  if (device_state == STATE_AP_CONFIG) {
     drawAPConfigMenu();
     return;
   }

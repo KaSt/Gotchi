@@ -84,6 +84,10 @@ void loop() {
 
   if (state == STATE_AP_CONFIG) {
     handleAPConfig();
+    // Check if AP mode timed out
+    if (!isAPModeActive()) {
+      exitAPConfigMode();
+    }
     updateUi(false);
     return;
   }

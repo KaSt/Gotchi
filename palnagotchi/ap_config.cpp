@@ -181,12 +181,21 @@ void handleSaveConfig() {
       config->device_name[sizeof(config->device_name) - 1] = '\0';
     }
     
-    // Parse brightness
+    // Parse brightness with validation
     int bright_start = body.indexOf("\"brightness\":") + 13;
-    int bright_end = body.indexOf(",", bright_start);
     if (bright_start > 12) {
-      String bright = body.substring(bright_start, bright_end);
-      config->brightness = bright.toInt();
+      int bright_end = body.indexOf(",", bright_start);
+      if (bright_end == -1) {
+        bright_end = body.indexOf("}", bright_start);
+      }
+      if (bright_end > bright_start) {
+        String bright = body.substring(bright_start, bright_end);
+        int brightness_value = bright.toInt();
+        // Validate brightness is in range 0-255
+        if (brightness_value >= 0 && brightness_value <= 255) {
+          config->brightness = brightness_value;
+        }
+      }
     }
     
     // Parse sound_enabled
@@ -255,9 +264,15 @@ void handleAPConfig() {
   // Auto-timeout after AP_TIMEOUT_MS
   if (millis() - ap_start_time > AP_TIMEOUT_MS) {
     stopAPMode();
+    // Note: The main loop will detect !isAPModeActive() and should exit AP state
   }
 }
 
 bool isAPModeActive() {
   return ap_mode_active;
+}
+
+bool shouldExitAPMode() {
+  // Check if AP mode was stopped (e.g., due to timeout)
+  return !ap_mode_active;
 }
