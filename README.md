@@ -20,6 +20,34 @@ The Pwngrid works by sending Wifi beacon frames with a JSON serialized payload i
 - Nearby pwnagotchis show all nearby units and its signal strength.
 - Palnagotchi gets a random mood every minute or so.
 
+## Configuration
+
+Palnagotchi now supports configuration via WiFi Access Point mode:
+
+1. **Enter Configuration Mode:**
+   - Press the menu button (ESC/m on Cardputer)
+   - Navigate to "Settings" and press OK
+   - Select "WiFi Config (AP)" and press OK
+
+2. **Connect to Configuration AP:**
+   - Connect your phone/computer to WiFi network: `Palnagotchi-Config`
+   - Password: `palnagotchi`
+
+3. **Access Configuration Page:**
+   - Open a web browser and go to: `http://192.168.4.1`
+   - Configure the following settings:
+     - **Device Name**: Change from "Palnagotchi" to your custom name
+     - **Display Brightness**: Adjust screen brightness (0-255)
+     - **Sound**: Enable or disable sound features
+
+4. **Save and Exit:**
+   - Click "Save Configuration" to store your settings
+   - Press the menu button to exit AP mode
+   - Settings will persist across reboots (stored in EEPROM)
+   - The configuration AP will auto-timeout after 5 minutes
+
+**Note:** Your custom device name will be used when advertising to the Pwngrid network, allowing other Pwnagotchis to see your personalized name!
+
 ## Why?
 
 I don't like to see a sad Pwnagotchi.

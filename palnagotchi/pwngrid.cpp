@@ -127,6 +127,7 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
   pwngrid_last_friend_name = pwngrid_peers[pwngrid_friends_tot].name;
   pwngrid_friends_tot++;
   EEPROM.write(0, pwngrid_friends_tot);
+  EEPROM.commit();
 }
 
 const int away_threshold = 120000;
