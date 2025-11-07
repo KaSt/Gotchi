@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "device_state.h"
 #include "config.h"
 #include "ap_config.h"
 

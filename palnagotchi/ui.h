@@ -4,12 +4,6 @@
 #include "mood.h"
 #include "pwngrid.h"
 
-// Device state constants
-#define STATE_INIT 0
-#define STATE_WAKE 1
-#define STATE_AP_CONFIG 2
-#define STATE_HALT 255
-
 // Forward declarations for state management
 void enterAPConfigMode();
 void exitAPConfigMode();

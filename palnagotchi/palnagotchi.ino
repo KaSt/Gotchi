@@ -3,14 +3,10 @@
 #endif
 
 #include "M5Unified.h"
+#include "device_state.h"
 #include "config.h"
 #include "ap_config.h"
 #include "ui.h"
-
-#define STATE_INIT 0
-#define STATE_WAKE 1
-#define STATE_AP_CONFIG 2
-#define STATE_HALT 255
 
 uint8_t state;
 
