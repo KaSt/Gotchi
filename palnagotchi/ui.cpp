@@ -337,10 +337,10 @@ void drawAPConfigMenu() {
   y += 15;
   canvas_main.setCursor(0, y);
   canvas_main.setTextColor(YELLOW);
-  canvas_main.println("  SSID: Palnagotchi-Config");
+  canvas_main.println("  SSID: Atomgotchi-Config");
   y += 15;
   canvas_main.setCursor(0, y);
-  canvas_main.println("  PASS: palnagotchi");
+  canvas_main.println("  PASS: atomgotchi");
   y += 20;
   canvas_main.setTextColor(GREEN);
   canvas_main.setCursor(0, y);

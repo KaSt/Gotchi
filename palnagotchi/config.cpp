@@ -3,11 +3,14 @@
 DeviceConfig device_config;
 
 void initConfig() {
+  Serial.println("initConfig...");
   EEPROM.begin(EEPROM_SIZE);
   loadConfig();
+  Serial.println("initConfig done.");
 }
 
 void loadConfig() {
+  Serial.println("loadConfig...");
   uint8_t magic = EEPROM.read(EEPROM_CONFIG_MAGIC_ADDR);
   
   if (magic == CONFIG_MAGIC_VALUE) {
@@ -18,21 +21,26 @@ void loadConfig() {
     resetConfig();
     saveConfig();
   }
+  Serial.println("loadConfig done.");
 }
 
 void saveConfig() {
+  Serial.println("saveConfig...");
   // Write magic value
   EEPROM.write(EEPROM_CONFIG_MAGIC_ADDR, CONFIG_MAGIC_VALUE);
   // Write configuration
   EEPROM.put(EEPROM_CONFIG_START_ADDR, device_config);
   EEPROM.commit();
+  Serial.println("saveConfig done.");
 }
 
 void resetConfig() {
-  strncpy(device_config.device_name, "Palnagotchi", sizeof(device_config.device_name) - 1);
+  Serial.println("resetConfig...");
+  strncpy(device_config.device_name, "Atomgotchi", sizeof(device_config.device_name) - 1);
   device_config.device_name[sizeof(device_config.device_name) - 1] = '\0';
   device_config.brightness = 128;
   device_config.sound_enabled = false;
+  Serial.println("resetConfig done.");
 }
 
 DeviceConfig* getConfig() {
@@ -44,7 +52,9 @@ String getDeviceName() {
 }
 
 void setDeviceName(const char* name) {
+  Serial.println("setDeviceName...");
   strncpy(device_config.device_name, name, sizeof(device_config.device_name) - 1);
   device_config.device_name[sizeof(device_config.device_name) - 1] = '\0';
   saveConfig();
+  Serial.println("setDeviceName done.");
 }

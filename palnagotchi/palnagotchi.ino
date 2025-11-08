@@ -14,6 +14,7 @@ void initM5() {
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Display.begin();
+  Serial.println("startup...");
 
   #ifdef ARDUINO_M5STACK_CARDPUTER
     M5Cardputer.begin(cfg);
@@ -43,6 +44,7 @@ void wakeUp() {
 }
 
 void advertise(uint8_t channel) {
+  Serial.println("Advertise...");
   uint32_t elapsed = millis() - last_mood_switch;
   if (elapsed > 50000) {
     setMood(random(2, 21));
@@ -61,6 +63,7 @@ void advertise(uint8_t channel) {
     setMood(MOOD_BROKEN, "", "Error: unknown", true);
     state = STATE_HALT;
   }
+  Serial.println("Advertise Done.");
 }
 
 void loop() {
@@ -97,6 +100,7 @@ void loop() {
   }
 
   updateUi(true);
+  Serial.println("Done loop");
 }
 
 void enterAPConfigMode() {

@@ -32,10 +32,11 @@ esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len,
                             bool en_sys_seq);
 
 esp_err_t pwngridAdvertise(uint8_t channel, String face) {
+  Serial.println("pwngridAdvertise...");
   DynamicJsonDocument pal_json(2048);
   String pal_json_str = "";
 
-  pal_json["pal"] = true;  // Also detect other Palnagotchis
+  pal_json["pal"] = true;  // Also detect other Atomgotchis
   pal_json["name"] = getDeviceName();
   pal_json["face"] = face;
   pal_json["epoch"] = 1;
@@ -92,11 +93,15 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   // vTaskDelay(103 / portTICK_PERIOD_MS);
   esp_err_t result = esp_wifi_80211_tx(WIFI_IF_AP, pwngrid_beacon_frame,
                                        sizeof(pwngrid_beacon_frame), false);
+
+  Serial.println("Sent Advertise Beacon");                                       
   return result;
 }
 
 void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
   String identity = json["identity"].as<String>();
+
+  Serial.println("pwngridAddPeer...");         
 
   for (uint8_t i = 0; i < pwngrid_friends_tot; i++) {
     // Check if peer identity is already in peers array
@@ -104,6 +109,7 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
       pwngrid_peers[i].last_ping = millis();
       pwngrid_peers[i].gone = false;
       pwngrid_peers[i].rssi = rssi;
+      Serial.println("Peer already added");
       return;
     }
   }
@@ -128,6 +134,8 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
   pwngrid_friends_tot++;
   EEPROM.write(0, pwngrid_friends_tot);
   EEPROM.commit();
+
+  Serial.println("Peer added.");
 }
 
 const int away_threshold = 120000;
@@ -181,6 +189,8 @@ void getMAC(char *addr, uint8_t *data, uint16_t offset) {
 }
 
 void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
+
+  Serial.println("pwnSnifferCallback...");
   wifi_promiscuous_pkt_t *snifferPacket = (wifi_promiscuous_pkt_t *)buf;
   WifiMgmtHdr *frameControl = (WifiMgmtHdr *)snifferPacket->payload;
 
@@ -236,12 +246,14 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
       }
     }
   }
+  Serial.println("pwnSnifferCallback done.");
 }
 
 const wifi_promiscuous_filter_t filter = {
     .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
 
 void initPwngrid() {
+  Serial.println("Init Pwngrid");
   // Disable WiFi logging
   esp_log_level_set("wifi", ESP_LOG_NONE);
 
@@ -256,4 +268,5 @@ void initPwngrid() {
   // esp_wifi_set_ps(WIFI_PS_NONE);
   esp_wifi_set_channel(random(0, 14), WIFI_SECOND_CHAN_NONE);
   delay(1);
+  Serial.println("Pwngrid initialised.");
 }

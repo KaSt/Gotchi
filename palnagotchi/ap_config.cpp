@@ -18,7 +18,7 @@ const char* html_page = R"rawliteral(
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Palnagotchi Configuration</title>
+  <title>Atomgotchi Configuration</title>
   <style>
     body { 
       font-family: Arial, sans-serif; 
@@ -83,7 +83,7 @@ const char* html_page = R"rawliteral(
   </style>
 </head>
 <body>
-  <h1>⚙️ Palnagotchi Config</h1>
+  <h1>⚙️ Atomgotchi Config</h1>
   <form id="configForm">
     <div class="form-group">
       <label for="device_name">Device Name:</label>

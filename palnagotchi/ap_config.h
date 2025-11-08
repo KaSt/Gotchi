@@ -5,10 +5,11 @@
 #include "WiFi.h"
 #include "WebServer.h"
 #include "config.h"
+#include "esp_wifi.h"
 
 // AP Configuration
-#define AP_SSID "Palnagotchi-Config"
-#define AP_PASSWORD "palnagotchi"
+#define AP_SSID "Atomgotchi-Config"
+#define AP_PASSWORD "atomgotchi"
 #define AP_TIMEOUT_MS 300000  // 5 minutes
 
 void initAPConfig();
