@@ -250,6 +250,7 @@ void initAPConfig() {
 }
 
 void startAPMode() {
+  Serial.println("AP Mode - Starting...");
   if (ap_mode_active) return;
   
   // Stop promiscuous mode and station mode
@@ -266,6 +267,7 @@ void startAPMode() {
   server.begin();
   ap_mode_active = true;
   ap_start_time = millis();
+  Serial.println("AP Mode - Started.");
 }
 
 void stopAPMode() {

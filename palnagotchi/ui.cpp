@@ -6,7 +6,6 @@
 M5Canvas canvas_top(&M5.Display);
 M5Canvas canvas_main(&M5.Display);
 M5Canvas canvas_bot(&M5.Display);
-// M5Canvas canvas_peers_menu(&M5.Display);
 
 int32_t display_w;
 int32_t display_h;
@@ -23,14 +22,18 @@ struct menu {
 };
 
 menu main_menu[] = {
-    {"Nearby Pwnagotchis", 2},
+    {"Friends", 2},
     {"Settings", 4},
-    {"About", 8}
-    // {"Friend spam", 16},
+    {"About", 8},
+    {"Back to Main", 99}  // Added back option
 };
 
 menu settings_menu[] = {
-    {"WiFi Config (AP)", 40},
+    {"AP Mode", 40},
+    {"Back", 41},
+};
+
+menu nearby_menu[] = {
     {"Back", 41},
 };
 
@@ -40,13 +43,14 @@ int settings_menu_len = sizeof(settings_menu) / sizeof(menu);
 bool menu_open = false;
 uint8_t menu_current_cmd = 0;
 uint8_t menu_current_opt = 0;
+uint8_t menu_max_opt = 0;  // Track max options for current menu
 
 void initUi() {
   if (M5.Display.width() < M5.Display.height()) {
     M5.Display.setRotation(M5.Display.getRotation() ^ 1);
   }
   M5.Display.setTextFont(&fonts::Font0);
-  M5.Display.setTextSize(1);
+  M5.Display.setTextSize(4);
   M5.Display.fillScreen(TFT_BLACK);
   M5.Display.setTextColor(GREEN);
   M5.Display.setColor(GREEN);
@@ -67,6 +71,7 @@ void initUi() {
 
 bool keyboard_changed = false;
 
+// Long press to toggle menu or select item
 bool toggleMenuBtnPressed() {
   #if defined(ARDUINO_M5STACK_CARDPUTER)
     return M5Cardputer.BtnA.isPressed() ||
@@ -79,28 +84,22 @@ bool toggleMenuBtnPressed() {
   #endif
 }
 
-bool isOkPressed() {
-  #if defined(ARDUINO_M5STACK_CARDPUTER)
-    return M5Cardputer.BtnA.isPressed() ||
-      (keyboard_changed && M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER));
-  #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
-    return M5.BtnA.wasClicked();
-  #else
-    return M5.BtnA.wasDecideClickCount() && M5.BtnA.getClickCount() == 1;
-  #endif
-}
-
+// Short press/click to navigate (was "OK")
 bool isNextPressed() {
   #if defined(ARDUINO_M5STACK_CARDPUTER)
     return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed('.') ||
                                   M5Cardputer.Keyboard.isKeyPressed('/') ||
-                                  M5Cardputer.Keyboard.isKeyPressed(KEY_TAB));
+                                  M5Cardputer.Keyboard.isKeyPressed(KEY_TAB) ||
+                                  M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER));
   #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
-    return M5.BtnPWR.wasClicked();
+    return M5.BtnA.wasClicked();
   #else
-    return M5.BtnA.wasDecideClickCount() && M5.BtnA.getClickCount() == 2;
+    // For AtomS3: single click/press to navigate
+    return M5.BtnA.wasClicked();
   #endif
 }
+
+// Not used in single-button mode, but kept for compatibility
 bool isPrevPressed() {
   #if defined(ARDUINO_M5STACK_CARDPUTER)
       return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed(',') ||
@@ -108,12 +107,12 @@ bool isPrevPressed() {
   #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
       return M5.BtnB.wasClicked();
   #else
-    return M5.BtnA.wasDecideClickCount() && M5.BtnA.getClickCount() == 3;
+    return false;  // Not used on AtomS3
   #endif
 }
 
 void updateUi(bool show_toolbars) {
-  Serial.println("UI - updateUi.");
+  ////Serial.println("UI - updateUi.");
 
   #ifdef ARDUINO_M5STACK_CARDPUTER
     keyboard_changed = M5Cardputer.Keyboard.isChange();
@@ -121,7 +120,10 @@ void updateUi(bool show_toolbars) {
     keyboard_changed = false;
   #endif
 
+  // Long press toggles menu or selects item
   if (toggleMenuBtnPressed()) {
+    //Serial.println("UI - Long press detected");
+    
     // If in AP config mode, exit it
     if (isAPModeActive()) {
       exitAPConfigMode();
@@ -131,30 +133,101 @@ void updateUi(bool show_toolbars) {
       return;
     }
     
-    // If menu is open, return to main menu
-    // If not, toggle menu
-    if (menu_open == true && menu_current_cmd != 0) {
+    // If menu is NOT open, open it
+    if (!menu_open) {
+      //Serial.println("UI - Opening menu");
+      menu_open = true;
       menu_current_cmd = 0;
       menu_current_opt = 0;
-    } else {
-      menu_open = !menu_open;
+      menu_max_opt = main_menu_len;
+    } 
+    // If menu IS open, select current option
+    else {
+      //Serial.printf("UI - Selecting menu option: cmd=%d, opt=%d\n", menu_current_cmd, menu_current_opt);
+      
+      // Handle selection based on current menu
+      switch (menu_current_cmd) {
+        case 0:  // Main menu
+          menu_current_cmd = main_menu[menu_current_opt].command;
+          menu_current_opt = 0;
+          
+          // Set max options for new menu
+          if (menu_current_cmd == 2) {  // Nearby menu
+            menu_max_opt = getPwngridRunTotalPeers() + 1;  // +1 for Back
+          } else if (menu_current_cmd == 4) {  // Settings menu
+            menu_max_opt = settings_menu_len;
+          } else if (menu_current_cmd == 8) {  // About - just back
+            menu_max_opt = 1;
+          } else if (menu_current_cmd == 99) {  // Back to main
+            menu_open = false;
+            menu_current_cmd = 0;
+            menu_current_opt = 0;
+          }
+          break;
+          
+        case 2:  // Nearby menu
+          // If "Back" is selected (last option)
+          if (menu_current_opt >= getPwngridRunTotalPeers()) {
+            menu_current_cmd = 0;
+            menu_current_opt = 0;
+            menu_max_opt = main_menu_len;
+          }
+          // Otherwise viewing a peer, just stay here
+          break;
+          
+        case 4:  // Settings menu
+          menu_current_cmd = settings_menu[menu_current_opt].command;
+          menu_current_opt = 0;
+          
+          if (menu_current_cmd == 40) {  // WiFi Config
+            // Will be handled in drawMenu
+            startAPMode();
+          } else if (menu_current_cmd == 41) {  // Back
+            menu_current_cmd = 0;
+            menu_current_opt = 0;
+            menu_max_opt = main_menu_len;
+          }
+          break;
+          
+        case 8:  // About menu - long press goes back
+          menu_current_cmd = 0;
+          menu_current_opt = 0;
+          menu_max_opt = main_menu_len;
+          break;
+          
+        default:
+          menu_current_cmd = 0;
+          menu_current_opt = 0;
+          menu_max_opt = main_menu_len;
+          break;
+      }
     }
   }
 
-  Serial.println("UI - Mood.");
+  // Short press cycles through options
+  if (isNextPressed() && menu_open) {
+    //Serial.println("UI - Short press - next option");
+    menu_current_opt++;
+    if (menu_current_opt >= menu_max_opt) {
+      menu_current_opt = 0;  // Wrap around
+    }
+    //Serial.printf("UI - New option: %d (max: %d)\n", menu_current_opt, menu_max_opt);
+  }
+
+  //Serial.println("UI - Mood.");
 
   uint8_t mood_id = getCurrentMoodId();
   String mood_face = getCurrentMoodFace();
   String mood_phrase = getCurrentMoodPhrase();
   bool mood_broken = isCurrentMoodBroken();
 
-  Serial.println("UI - Draw canvas.");
+  //Serial.println("UI - Draw canvas.");
 
   drawTopCanvas();
   drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(),
                    getPwngridLastFriendName(), getPwngridClosestRssi());
 
-  Serial.println("UI - Menu or Mood.");
+  //Serial.println("UI - Menu or Mood.");
 
   if (menu_open || isAPModeActive()) {
     drawMenu();
@@ -162,7 +235,7 @@ void updateUi(bool show_toolbars) {
     drawMood(mood_face, mood_phrase, mood_broken);
   }
 
-  Serial.println("UI - startWrite.");
+  //Serial.println("UI - startWrite.");
 
   M5.Display.startWrite();
   if (show_toolbars) {
@@ -172,7 +245,7 @@ void updateUi(bool show_toolbars) {
   canvas_main.pushSprite(0, canvas_top_h);
   M5.Display.endWrite();
 
-  Serial.println("UI - Ended updateUi.");
+  //Serial.println("UI - Ended updateUi.");
 }
 
 void drawTopCanvas() {
@@ -190,12 +263,12 @@ void drawTopCanvas() {
   int8_t s = sr % 60;
   if (display_w > 128) {
     char right_str[50] = "UPS 0%  UP 00:00:00";
-    sprintf(right_str, "UPS %i%% UP %02d:%02d:%02d", M5.Power.getBatteryLevel(),
-            h, m, s);
+    snprintf(right_str, sizeof(right_str), "UPS %i%% UP %02d:%02d:%02d", 
+             M5.Power.getBatteryLevel(), h, m, s);
     canvas_top.drawString(right_str, display_w, 3);
   } else {
     char right_str[50] = "UP 00:00:00";
-    sprintf(right_str, "UP %02d:%02d:%02d", h, m, s);
+    snprintf(right_str, sizeof(right_str), "UP %02d:%02d:%02d", h, m, s);
     canvas_top.drawString(right_str, display_w, 3);
   }
   canvas_top.drawLine(0, canvas_top_h - 1, display_w, canvas_top_h - 1);
@@ -227,7 +300,6 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot,
   canvas_bot.setColor(GREEN);
   canvas_bot.setTextDatum(top_left);
 
-  // https://github.com/evilsocket/pwnagotchi/blob/2122af4e264495d32ee415c074da8efd905901f0/pwnagotchi/ui/view.py#L191
   String rssi_bars = getRssiBars(rssi);
   char stats[25] = "FRND 0 (0)";
   if (friends_run > 0) {
@@ -258,6 +330,11 @@ void drawMood(String face, String phrase, bool broken) {
   canvas_main.setTextDatum(bottom_center);
   canvas_main.setTextSize(1);
   canvas_main.drawString(phrase, canvas_center_x, canvas_h - 23);
+  
+  // Add hint text at bottom
+  canvas_main.setTextColor(TFT_DARKGRAY);
+  canvas_main.setTextSize(1);
+  canvas_main.drawString("Long press for menu", canvas_center_x, canvas_h - 5);
 }
 
 #define ROW_SIZE 40
@@ -274,13 +351,25 @@ void drawMainMenu() {
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
 
+  // Title
+  canvas_main.setTextColor(YELLOW);
+  canvas_main.drawString("MAIN MENU", PADDING, PADDING);
+  canvas_main.setTextColor(GREEN);
+
   char display_str[50] = "";
   for (uint8_t i = 0; i < main_menu_len; i++) {
-    sprintf(display_str, "%s %s", (menu_current_opt == i) ? ">" : " ",
-            main_menu[i].name);
-    int y = PADDING + (i * ROW_SIZE / 2);
-    canvas_main.drawString(display_str, 0, y);
+    snprintf(display_str, sizeof(display_str), "%s %s", 
+             (menu_current_opt == i) ? ">" : " ",
+             main_menu[i].name);
+    int y = PADDING + 20 + (i * ROW_SIZE / 2);
+    canvas_main.drawString(display_str, PADDING, y);
   }
+  
+  // Help text at bottom
+  canvas_main.setTextColor(TFT_DARKGRAY);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(bottom_center);
+  canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
 }
 
 void drawNearbyMenu() {
@@ -290,24 +379,43 @@ void drawNearbyMenu() {
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
 
+  // Title
+  canvas_main.setTextColor(YELLOW);
+  canvas_main.drawString("NEARBY", PADDING, PADDING);
+  canvas_main.setTextColor(GREEN);
+
   pwngrid_peer* pwngrid_peers = getPwngridPeers();
   uint8_t len = getPwngridRunTotalPeers();
 
   if (len == 0) {
     canvas_main.setTextColor(TFT_DARKGRAY);
-    canvas_main.setCursor(0, PADDING);
-    canvas_main.println("No nearby Pwnagotchis. Seriously?");
+    canvas_main.setCursor(PADDING, PADDING + 20);
+    canvas_main.println("No nearby Pwnagotchis");
+    canvas_main.println("found yet...");
+  } else {
+    char display_str[50] = "";
+    for (uint8_t i = 0; i < len; i++) {
+      snprintf(display_str, sizeof(display_str), "%s %s [%s]", 
+           (menu_current_opt == i) ? ">" : " ",
+           pwngrid_peers[i].name, 
+           getRssiBars(pwngrid_peers[i].rssi).c_str());
+      int y = PADDING + 20 + (i * ROW_SIZE / 2);
+      canvas_main.drawString(display_str, PADDING, y);
+    }
   }
-
-  char display_str[50] = "";
-  for (uint8_t i = 0; i < len; i++) {
-    snprintf(display_str, sizeof(display_str), "%s %s [%s]", 
-         (menu_current_opt == i) ? ">" : " ",
-         pwngrid_peers[i].name, 
-         getRssiBars(pwngrid_peers[i].rssi).c_str());
-    int y = PADDING + (i * ROW_SIZE / 2);
-    canvas_main.drawString(display_str, 0, y);
-  }
+  
+  // Back option
+  char back_str[50] = "";
+  snprintf(back_str, sizeof(back_str), "%s Back", 
+           (menu_current_opt == len) ? ">" : " ");
+  int back_y = PADDING + 20 + (len * ROW_SIZE / 2);
+  canvas_main.drawString(back_str, PADDING, back_y);
+  
+  // Help text
+  canvas_main.setTextColor(TFT_DARKGRAY);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(bottom_center);
+  canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
 }
 
 void drawSettingsMenu() {
@@ -317,20 +425,45 @@ void drawSettingsMenu() {
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
 
+  // Title
+  canvas_main.setTextColor(YELLOW);
+  canvas_main.drawString("SETTINGS", PADDING, PADDING);
+  canvas_main.setTextColor(GREEN);
+
   char display_str[50] = "";
   for (uint8_t i = 0; i < settings_menu_len; i++) {
-    sprintf(display_str, "%s %s", (menu_current_opt == i) ? ">" : " ",
-            settings_menu[i].name);
-    int y = PADDING + (i * ROW_SIZE / 2);
-    canvas_main.drawString(display_str, 0, y);
+    snprintf(display_str, sizeof(display_str), "%s %s", 
+             (menu_current_opt == i) ? ">" : " ",
+             settings_menu[i].name);
+    int y = PADDING + 20 + (i * ROW_SIZE / 2);
+    canvas_main.drawString(display_str, PADDING, y);
   }
+  
+  // Help text
+  canvas_main.setTextColor(TFT_DARKGRAY);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(bottom_center);
+  canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
 }
 
 void drawAboutMenu() {
   canvas_main.clear(BLACK);
+  
+  // Title
+  canvas_main.setTextColor(YELLOW);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(top_center);
+  canvas_main.drawString("ABOUT", canvas_center_x, PADDING);
+  
   canvas_main.qrcode("https://github.com/viniciusbo/m5-palnagotchi",
-                     (display_w / 2) - (display_h * 0.3), PADDING,
-                     display_h * 0.65);
+                     (display_w / 2) - (display_h * 0.3), PADDING + 25,
+                     display_h * 0.5);
+  
+  // Help text
+  canvas_main.setTextColor(TFT_DARKGRAY);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(bottom_center);
+  canvas_main.drawString("Hold to go back", canvas_center_x, canvas_h - 5);
 }
 
 void drawAPConfigMenu() {
@@ -342,13 +475,13 @@ void drawAPConfigMenu() {
   
   int y = PADDING;
   canvas_main.setCursor(0, y);
-  canvas_main.println("WiFi Config Mode Active");
+  canvas_main.println("AP Active");
   y += 20;
   canvas_main.setCursor(0, y);
   canvas_main.println("");
   y += 20;
   canvas_main.setCursor(0, y);
-  canvas_main.println("Connect to WiFi:");
+  canvas_main.println("AP:");
   y += 15;
   canvas_main.setCursor(0, y);
   canvas_main.setTextColor(YELLOW);
@@ -370,7 +503,7 @@ void drawAPConfigMenu() {
   canvas_main.println("Auto-exits in 5 minutes");
   y += 15;
   canvas_main.setCursor(0, y);
-  canvas_main.println("or press menu to exit");
+  canvas_main.println("Hold button to exit");
 }
 
 void drawMenu() {
@@ -381,49 +514,33 @@ void drawMenu() {
     return;
   }
 
-  if (isNextPressed()) {
-    // if (menu_current_opt < menu_current_size - 1) {
-    menu_current_opt++;
-    // } else {
-    //   menu_current_opt = 0;
-    // }
-  }
-
-  if (isPrevPressed()) {
-    if (menu_current_opt > 0) {
-      menu_current_opt--;
-    }
-  }
-
-  // Change menu
-
+  // Draw appropriate menu based on current command
   switch (menu_current_cmd) {
     case 0:
-      if (isOkPressed()) {
-        menu_current_cmd = main_menu[menu_current_opt].command;
-        menu_current_opt = 0;
-      }
       drawMainMenu();
       break;
     case 2:
       drawNearbyMenu();
       break;
     case 4:
-      if (isOkPressed()) {
-        menu_current_cmd = settings_menu[menu_current_opt].command;
-        menu_current_opt = 0;
-      }
       drawSettingsMenu();
       break;
     case 8:
       drawAboutMenu();
       break;
     case 40:
-      // WiFi Config (AP) selected
+      // WiFi Config (AP) selected - enter AP mode
       enterAPConfigMode();
       break;
     case 41:
-      // Back selected
+      // Back selected - should have been handled in updateUi
+      menu_current_cmd = 0;
+      menu_current_opt = 0;
+      drawMainMenu();
+      break;
+    case 99:
+      // Back to main screen
+      menu_open = false;
       menu_current_cmd = 0;
       menu_current_opt = 0;
       break;
@@ -432,19 +549,3 @@ void drawMenu() {
       break;
   }
 }
-
-// bool check_prev_press() {
-//   if (M5.Keyboard.isKeyPressed(ARROW_UP)) {
-//     return true;
-//   }
-//
-//   return false;
-// }
-//
-// bool check_next_press() {
-//   if (M5.Keyboard.isKeyPressed(ARROW_DOWN)) {
-//     return true;
-//   }
-//
-//   return false;
-// }

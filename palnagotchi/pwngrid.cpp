@@ -94,14 +94,14 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   esp_err_t result = esp_wifi_80211_tx(WIFI_IF_AP, pwngrid_beacon_frame,
                                        sizeof(pwngrid_beacon_frame), false);
 
-  Serial.println("Sent Advertise Beacon");                                       
+  //Serial.println("Sent Advertise Beacon");                                       
   return result;
 }
 
 void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
   String identity = json["identity"].as<String>();
 
-  Serial.println("pwngridAddPeer...");         
+  //Serial.println("pwngridAddPeer...");         
 
   for (uint8_t i = 0; i < pwngrid_friends_tot; i++) {
     // Check if peer identity is already in peers array

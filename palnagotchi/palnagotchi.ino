@@ -41,17 +41,17 @@ uint32_t last_mood_switch = 10001;
 
 void wakeUp() {
   for (uint8_t i = 0; i < 3; i++) {
-    Serial.println("WakeUp - Setting Mood...");
+    //Serial.println("WakeUp - Setting Mood...");
     setMood(i);
-    Serial.println("WakeUp - Updating UI...");
+    //Serial.println("WakeUp - Updating UI...");
     updateUi();
-    Serial.println("WakeUp - Delaying 1250...");
+    //Serial.println("WakeUp - Delaying 1250...");
     delay(1250);
   }
 }
 
 void advertise(uint8_t channel) {
-  Serial.println("Advertise...");
+  //Serial.println("Advertise...");
   uint32_t elapsed = millis() - last_mood_switch;
   if (elapsed > 50000) {
     setMood(random(2, 21));
@@ -70,11 +70,11 @@ void advertise(uint8_t channel) {
     setMood(MOOD_BROKEN, "", "Error: unknown", true);
     state = STATE_HALT;
   }
-  Serial.println("Advertise Done.");
+  //Serial.println("Advertise Done.");
 }
 
 void loop() {
-  Serial.printf("Loop Begin\nFree heap: %d bytes\n", ESP.getFreeHeap());
+  //Serial.printf("Loop Begin\nFree heap: %d bytes\n", ESP.getFreeHeap());
   
   M5.update();
   #ifdef ARDUINO_M5STACK_CARDPUTER
@@ -93,7 +93,7 @@ void loop() {
   }
 
   if (state == STATE_AP_CONFIG) {
-    Serial.println("Loop - STATE_AP_CONFIG");
+    //Serial.println("Loop - STATE_AP_CONFIG");
     handleAPConfig();
     // Check if AP mode timed out
     if (!isAPModeActive()) {
@@ -104,7 +104,7 @@ void loop() {
   }
 
   if (state == STATE_WAKE) {
-    Serial.println("Loop - STATE_WAKE");
+    //Serial.println("Loop - STATE_WAKE");
     checkPwngridGoneFriends();
     advertise(current_channel++);
     if (current_channel == 15) {
@@ -112,9 +112,9 @@ void loop() {
     }
   }
 
-  Serial.println("Loop - updateUi(true)");
+  //Serial.println("Loop - updateUi(true)");
   updateUi(true);
-  Serial.println("Done loop");
+  //Serial.println("Done loop");
 }
 
 void enterAPConfigMode() {
@@ -130,6 +130,6 @@ void exitAPConfigMode() {
 }
 
 uint8_t getDeviceState() {
-  Serial.println("getDeviceState");
+  //Serial.println("getDeviceState");
   return state;
 }
