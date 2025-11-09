@@ -11,11 +11,16 @@
 #define EEPROM_CONFIG_START_ADDR 5
 #define CONFIG_MAGIC_VALUE 0xAB
 
+// Personality
+#define FRIENDLY 0
+#define PASSIVE 1
+#define AGGRESSIVE 2
+
 // Configuration structure
 struct DeviceConfig {
   char device_name[32];
   uint8_t brightness;
-  bool sound_enabled;
+  int personality;
 };
 
 // Configuration functions

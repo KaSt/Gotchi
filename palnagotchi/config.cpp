@@ -36,10 +36,10 @@ void saveConfig() {
 
 void resetConfig() {
   Serial.println("resetConfig...");
-  strncpy(device_config.device_name, "Atomgotchi", sizeof(device_config.device_name) - 1);
+  strncpy(device_config.device_name, "Gotchi", sizeof(device_config.device_name) - 1);
   device_config.device_name[sizeof(device_config.device_name) - 1] = '\0';
   device_config.brightness = 128;
-  device_config.sound_enabled = false;
+  device_config.personality = FRIENDLY;
   Serial.println("resetConfig done.");
 }
 

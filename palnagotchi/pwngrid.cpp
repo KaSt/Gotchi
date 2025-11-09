@@ -32,11 +32,11 @@ esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len,
                             bool en_sys_seq);
 
 esp_err_t pwngridAdvertise(uint8_t channel, String face) {
-  Serial.println("pwngridAdvertise...");
+  //Serial.println("pwngridAdvertise...");
   DynamicJsonDocument pal_json(2048);
   String pal_json_str = "";
 
-  pal_json["pal"] = true;  // Also detect other Atomgotchis
+  pal_json["pal"] = true;  // Also detect other Gotchis
   pal_json["name"] = getDeviceName();
   pal_json["face"] = face;
   pal_json["epoch"] = 1;

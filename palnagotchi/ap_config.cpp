@@ -8,17 +8,17 @@ unsigned long ap_start_time = 0;
 // JSON parsing constants (compile-time)
 const char JSON_DEVICE_NAME_KEY[] = "\"device_name\":\"";
 const char JSON_BRIGHTNESS_KEY[] = "\"brightness\":";
-const char JSON_SOUND_ENABLED_KEY[] = "\"sound_enabled\":";
+const char JSON_PERSONALITY_KEY[] = "\"personality\":";
 const size_t JSON_DEVICE_NAME_KEY_LEN = sizeof(JSON_DEVICE_NAME_KEY) - 1;
 const size_t JSON_BRIGHTNESS_KEY_LEN = sizeof(JSON_BRIGHTNESS_KEY) - 1;
-const size_t JSON_SOUND_ENABLED_KEY_LEN = sizeof(JSON_SOUND_ENABLED_KEY) - 1;
+const size_t JSON_PERSONALITY_KEY_LEN = sizeof(JSON_PERSONALITY_KEY) - 1;
 
 const char* html_page = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Atomgotchi Configuration</title>
+  <title>Gotchi Configuration</title>
   <style>
     body { 
       font-family: Arial, sans-serif; 
@@ -83,7 +83,7 @@ const char* html_page = R"rawliteral(
   </style>
 </head>
 <body>
-  <h1>⚙️ Atomgotchi Config</h1>
+  <h1>Gotchi Configuration</h1>
   <form id="configForm">
     <div class="form-group">
       <label for="device_name">Device Name:</label>
@@ -94,9 +94,14 @@ const char* html_page = R"rawliteral(
       <input type="number" id="brightness" name="brightness" min="0" max="255" required>
     </div>
     <div class="form-group">
-      <div class="checkbox-group">
-        <input type="checkbox" id="sound_enabled" name="sound_enabled">
-        <label for="sound_enabled">Enable Sound</label>
+    <legend>Personality:</legend>
+      <div class="radio-group">
+        <input type="radio" id="Friendly" name="personality" value="friendly" checked>
+        <label for="friendly">Just looking for Friends</label>
+        <input type="radio" id="Passive" name="personality" value="friendly">
+        <label for="friendly">Passively sniffing around</label>
+        <input type="radio" id="Aggressive" name="personality" value="friendly">
+        <label for="friendly">Actively looking for any scent fo a WiFi</label>
       </div>
     </div>
     <button type="submit">Save Configuration</button>
@@ -112,7 +117,7 @@ const char* html_page = R"rawliteral(
         .then(data => {
           document.getElementById('device_name').value = data.device_name;
           document.getElementById('brightness').value = data.brightness;
-          document.getElementById('sound_enabled').checked = data.sound_enabled;
+          document.getElementById('personality').value = data.personality;
         });
     };
     
@@ -123,7 +128,7 @@ const char* html_page = R"rawliteral(
       const data = {
         device_name: formData.get('device_name'),
         brightness: parseInt(formData.get('brightness')),
-        sound_enabled: document.getElementById('sound_enabled').checked
+        personality: document.getElementById('personality').value
       };
       
       fetch('/api/save', {
@@ -168,7 +173,7 @@ void handleGetConfig() {
   String json = "{";
   json += "\"device_name\":\"" + String(config->device_name) + "\",";
   json += "\"brightness\":" + String(config->brightness) + ",";
-  json += "\"sound_enabled\":" + String(config->sound_enabled ? "true" : "false");
+  json += "\"personality\":" + String(config->personality ? "true" : "false");
   json += "}";
   server.send(200, "application/json", json);
 }
@@ -216,17 +221,25 @@ void handleSaveConfig() {
       }
     }
     
-    // Parse sound_enabled
-    int sound_start = body.indexOf(JSON_SOUND_ENABLED_KEY);
-    if (sound_start >= 0) {
-      sound_start += JSON_SOUND_ENABLED_KEY_LEN;
-      int sound_end = findJsonFieldEnd(body, sound_start);
-      if (sound_end > sound_start) {
-        String sound_value = body.substring(sound_start, sound_end);
-        sound_value.trim();
-        config->sound_enabled = (sound_value == "true");
+    // Parse personality
+    int personality_start = body.indexOf(JSON_PERSONALITY_KEY);
+    if (personality_start >= 0) {
+      personality_start += JSON_PERSONALITY_KEY_LEN;
+      int personality_end = findJsonFieldEnd(body, personality_start);
+      if (personality_end > personality_start) {
+        String personality_value = body.substring(personality_start, personality_end);
+        personality_value.trim();
+        if (personality_value == "Friendly") {
+          config->personality = FRIENDLY;
+        } else if (personality_value = "Passive") {
+            config->personality = PASSIVE;
+        } else if (personality_value = "Aggressive") {
+            config->personality = AGGRESSIVE;
+        } else {
+          config->personality = FRIENDLY;
+        }
       }
-    }
+    } 
     
     saveConfig();
     
@@ -254,20 +267,47 @@ void startAPMode() {
   if (ap_mode_active) return;
   
   // Stop promiscuous mode and station mode
+  Serial.println("Stop promiscuous mode and station mode");
+
+  // CRITICAL: Stop promiscuous mode first
   esp_wifi_set_promiscuous(false);
+  delay(100);  // Give it time to stop
+
+  // Disconnect and stop all WiFi operations
+  Serial.println("Disconnecting WiFi...");
+  WiFi.disconnect(true);  // true = wifioff
+  delay(100);
+
+  // Completely stop WiFi
+  Serial.println("Stopping WiFi...");
+  WiFi.mode(WIFI_OFF);
+  delay(500);  // Important: Give time for mode to fully stop
+
+  // Now start AP mode
+  Serial.println("WiFi.mode(WIFI_AP)");
   WiFi.mode(WIFI_AP);
-  
+  delay(100);
+
   // Start Access Point
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
-  
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  
-  server.begin();
-  ap_mode_active = true;
-  ap_start_time = millis();
-  Serial.println("AP Mode - Started.");
+  Serial.println("Start Soft Access Point");
+  bool ap_success = WiFi.softAP(AP_SSID, AP_PASSWORD);
+
+  if (ap_success) {
+    Serial.println("SoftAP started successfully.");
+    
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
+    
+    server.begin();
+    ap_mode_active = true;
+    ap_start_time = millis();
+    Serial.println("AP Mode - Started.");
+  } else {
+    Serial.println("ERROR: Failed to start AP mode!");
+    // Optionally: try to restart WiFi in station mode
+    ap_mode_active = false;
+  }
 }
 
 void stopAPMode() {

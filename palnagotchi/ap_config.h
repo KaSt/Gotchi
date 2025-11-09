@@ -8,8 +8,8 @@
 #include "esp_wifi.h"
 
 // AP Configuration
-#define AP_SSID "Atomgotchi-Config"
-#define AP_PASSWORD "atomgotchi"
+#define AP_SSID "Gotchi"
+#define AP_PASSWORD "GotchiPass"
 #define AP_TIMEOUT_MS 300000  // 5 minutes
 
 void initAPConfig();

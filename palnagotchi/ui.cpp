@@ -181,7 +181,6 @@ void updateUi(bool show_toolbars) {
           
           if (menu_current_cmd == 40) {  // WiFi Config
             // Will be handled in drawMenu
-            startAPMode();
           } else if (menu_current_cmd == 41) {  // Back
             menu_current_cmd = 0;
             menu_current_opt = 0;
@@ -374,7 +373,7 @@ void drawMainMenu() {
 
 void drawNearbyMenu() {
   canvas_main.clear(BLACK);
-  canvas_main.setTextSize(2);
+  canvas_main.setTextSize(1);
   canvas_main.setTextColor(GREEN);
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
@@ -390,7 +389,7 @@ void drawNearbyMenu() {
   if (len == 0) {
     canvas_main.setTextColor(TFT_DARKGRAY);
     canvas_main.setCursor(PADDING, PADDING + 20);
-    canvas_main.println("No nearby Pwnagotchis");
+    canvas_main.println("No friends nearby");
     canvas_main.println("found yet...");
   } else {
     char display_str[50] = "";
@@ -485,10 +484,10 @@ void drawAPConfigMenu() {
   y += 15;
   canvas_main.setCursor(0, y);
   canvas_main.setTextColor(YELLOW);
-  canvas_main.println("  SSID: Atomgotchi-Config");
+  canvas_main.println("  SSID: Gotchi");
   y += 15;
   canvas_main.setCursor(0, y);
-  canvas_main.println("  PASS: atomgotchi");
+  canvas_main.println("  PASS: GotchiPass");
   y += 20;
   canvas_main.setTextColor(GREEN);
   canvas_main.setCursor(0, y);
@@ -510,6 +509,9 @@ void drawMenu() {
   // Check if in AP config mode
   uint8_t device_state = getDeviceState();
   if (device_state == STATE_AP_CONFIG) {
+    if (!isAPModeActive()) { 
+      startAPMode();
+    }
     drawAPConfigMenu();
     return;
   }
