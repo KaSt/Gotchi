@@ -25,7 +25,7 @@ menu main_menu[] = {
   { "Friends", 2 },
   { "Settings", 4 },
   { "About", 8 },
-  { "Back to Main", 99 }  // Added back option
+  { "Back", 99 }  // Added back option
 };
 
 menu settings_menu[] = {
@@ -184,8 +184,6 @@ void updateUi(bool show_toolbars) {
 
           if (menu_current_cmd == 40) {  // WiFi Config
             // Will be handled in drawMenu
-          } else if (menu_current_cmd == 42) {
-            Serial.println("Clicked on Personality.");
           } else if (menu_current_cmd == 41) {  // Back
             menu_current_cmd = 0;
             menu_current_opt = 0;
@@ -200,7 +198,6 @@ void updateUi(bool show_toolbars) {
           break;
 
         case 42:  // Personality menu - Choose Gotchi's personality.
-          Serial.println("In the Personality menu");
           menu_current_cmd = personality_menu[menu_current_opt].command;
           menu_current_opt = 0;
 
@@ -232,8 +229,6 @@ void updateUi(bool show_toolbars) {
     }
     //Serial.printf("UI - New option: %d (max: %d)\n", menu_current_opt, menu_max_opt);
   }
-
-  //Serial.println("UI - Mood.");
 
   uint8_t mood_id = getCurrentMoodId();
   String mood_face = getCurrentMoodFace();
@@ -387,11 +382,13 @@ void drawMainMenu() {
     canvas_main.drawString(display_str, PADDING, y);
   }
 
+  /*
   // Help text at bottom
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
   canvas_main.setTextDatum(bottom_center);
   canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
+  */
 }
 
 void drawNearbyMenu() {
@@ -433,11 +430,13 @@ void drawNearbyMenu() {
   int back_y = PADDING + 20 + (len * ROW_SIZE / 2);
   canvas_main.drawString(back_str, PADDING, back_y);
 
+  /*
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
   canvas_main.setTextDatum(bottom_center);
   canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
+  */
 }
 
 void drawSettingsMenu() {
@@ -461,11 +460,13 @@ void drawSettingsMenu() {
     canvas_main.drawString(display_str, PADDING, y);
   }
 
+  /*
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
   canvas_main.setTextDatum(bottom_center);
   canvas_main.drawString("Press: Next | Hold: Select", canvas_center_x, canvas_h - 5);
+  */
 }
 
 void drawAboutMenu() {
@@ -477,15 +478,17 @@ void drawAboutMenu() {
   canvas_main.setTextDatum(top_center);
   canvas_main.drawString("ABOUT", canvas_center_x, PADDING);
 
-  canvas_main.qrcode("https://github.com/viniciusbo/m5-palnagotchi",
-                     (display_w / 2) - (display_h * 0.3), PADDING + 25,
+  canvas_main.qrcode("https://github.com/KaSt/Atomgotchi",
+                     (display_w / 2) - (display_h * 0.3), PADDING + 15,
                      display_h * 0.5);
 
+  /*
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
   canvas_main.setTextDatum(bottom_center);
   canvas_main.drawString("Hold to go back", canvas_center_x, canvas_h - 5);
+  */
 }
 
 void drawAPConfigMenu() {

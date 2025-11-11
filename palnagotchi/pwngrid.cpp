@@ -14,167 +14,27 @@ DeviceConfig *config = getConfig();
 
 
 // helper: format MAC -> string
-void mac_to_string(const uint8_t mac[6], char *out /*18 bytes*/) {
+void MAC2str(const uint8_t mac[6], char *out /*18 bytes*/) {
   sprintf(out, "%02x:%02x:%02x:%02x:%02x:%02x",
           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-bool init_db() {
-  if (!SPIFFS.begin(true)) {  // format if failed
-    Serial.println("Failed to mount SPIFFS");
-    return false;
+void dbFriendTask(void *pv) {
+  pwngrid_peer item;
+  for (;;) {
+    if (xQueueReceive(frQueue, &item, portMAX_DELAY) == pdTRUE) {
+      if (!mergeFriend(item)) {
+        Serial.println("Merge failed for friend");
+      }
+    }
   }
-  // opzionale: sqlite initialization (la library può richiederla)
-  sqlite3_initialize();
-
-  int rc = sqlite3_open(DB_PATH, &db);
-  if (rc != SQLITE_OK) {
-    Serial.print("sqlite3_open error: ");
-    Serial.println(sqlite3_errmsg(db));
-    if (db) sqlite3_close(db);
-    db = NULL;
-    return false;
-  }
-
-  const char *create_packets_sql =
-    "CREATE TABLE IF NOT EXISTS packets ("
-    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-    "ts INTEGER,"
-    "bssid TEXT,"
-    "type TEXT,"
-    "channel INTEGER,"
-    "meta TEXT,"
-    "pkt BLOB"
-    ");"
-    "CREATE INDEX IF NOT EXISTS idx_packets_bssid ON packets(bssid);"
-    "CREATE INDEX IF NOT EXISTS idx_packets_ts ON packets(ts);";
-
-  char *errmsg = NULL;
-  rc = sqlite3_exec(db, create_packets_sql, 0, 0, &errmsg);
-  if (rc != SQLITE_OK) {
-    Serial.print("Create table packets failed: ");
-    if (errmsg) Serial.println(errmsg);
-    if (errmsg) sqlite3_free(errmsg);
-    sqlite3_close(db);
-    db = NULL;
-    return false;
-  }
-
-  const char *create_friends_sql =
-    "CREATE TABLE IF NOT EXISTS friends ("
-    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-    "epoch INTEGER,"
-    "face TEXT,"
-    "grid_version TEXT,"
-    "identity TEXT,"
-    "name TEXT,"
-    "session_id TEXT,"
-    "uptime INTEGER,"
-    "version TEXT,"
-    "last_ping INTEGER,"
-    "gone INTEGER,"
-    "ts INTEGER,"
-    "rssi TEXT,"
-    "channel INTEGER"
-    ");"
-    "CREATE INDEX IF NOT EXISTS idx_friends_identity ON friends(identity);"
-    "CREATE INDEX IF NOT EXISTS idx_friends_name ON friends(name);"
-    "CREATE INDEX IF NOT EXISTS idx_friends_ts ON friends(ts);";
-
-  rc = sqlite3_exec(db, create_friends_sql, 0, 0, &errmsg);
-  if (rc != SQLITE_OK) {
-    Serial.print("Create table friends failed: ");
-    if (errmsg) Serial.println(errmsg);
-    if (errmsg) sqlite3_free(errmsg);
-    sqlite3_close(db);
-    db = NULL;
-    return false;
-  }
-
-  Serial.println("DB ready");
-  return true;
 }
 
-// Called by DB task)
-bool db_insert_packet(sqlite3 *dbh, const packet_item_t *it) {
-  if (!dbh || !it) return false;
-  const char *sql = "INSERT INTO packets (ts, bssid, type, channel, meta, pkt) VALUES (?, ?, ?, ?, ?, ?);";
-  sqlite3_stmt *stmt = NULL;
-  int rc = sqlite3_prepare_v2(dbh, sql, -1, &stmt, NULL);
-  if (rc != SQLITE_OK) {
-    Serial.print("prepare insert into packets fail: ");
-    Serial.println(sqlite3_errmsg(dbh));
-    return false;
-  }
-
-  // bind: 1-based params
-  sqlite3_bind_int64(stmt, 1, it->ts_ms);
-  sqlite3_bind_text(stmt, 2, it->bssid, -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 3, it->type, -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int(stmt, 4, it->channel);
-  sqlite3_bind_text(stmt, 5, "{}", -1, SQLITE_TRANSIENT);  // meta placeholder
-  // bind blob (pkt)
-  sqlite3_bind_blob(stmt, 6, it->data, (int)it->len, SQLITE_TRANSIENT);
-
-  rc = sqlite3_step(stmt);
-  if (rc != SQLITE_DONE) {
-    Serial.print("step/insert into packets failed: ");
-    Serial.println(sqlite3_errmsg(dbh));
-    sqlite3_finalize(stmt);
-    return false;
-  }
-  sqlite3_finalize(stmt);
-  return true;
-}
-
-bool db_insert_friend(sqlite3 *dbh, const pwngrid_peer *it) {
-  if (!dbh || !it) return false;
-  const char *sql = "INSERT INTO friends (face, grid_version, identity, name, session_id, uptime, version, last_ping, gone, ts, rssi, channel) VALUES (?, ?, ?, ?,?, ?, ?, ?,?, ?, ?, ?);";
-  sqlite3_stmt *stmt = NULL;
-  int rc = sqlite3_prepare_v2(dbh, sql, -1, &stmt, NULL);
-  if (rc != SQLITE_OK) {
-    Serial.print("prepare friend insert fail: ");
-    Serial.println(sqlite3_errmsg(dbh));
-    return false;
-  }
-
-  // bind: 1-based params
-  sqlite3_bind_text(stmt, 1, it->face.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 2, it->grid_version.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 3, it->identity.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 4, it->name.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 5, it->session_id.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 6, it->uptime);
-  sqlite3_bind_text(stmt, 7, it->version.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 8, it->last_ping);
-  sqlite3_bind_int(stmt, 9, it->gone);
-  sqlite3_bind_int64(stmt, 10, it->timestamp);
-  sqlite3_bind_int64(stmt, 11, it->rssi);
-  sqlite3_bind_int(stmt, 12, it->channel);
-
-  rc = sqlite3_step(stmt);
-  if (rc != SQLITE_DONE) {
-    Serial.print("step/insert into friends failed: ");
-    Serial.println(sqlite3_errmsg(dbh));
-    sqlite3_finalize(stmt);
-    return false;
-  }
-  sqlite3_finalize(stmt);
-  return true;
-}
-
-void db_task(void *pv) {
+void dbPacketTask(void *pv) {
   packet_item_t item;
   for (;;) {
     if (xQueueReceive(pktQueue, &item, portMAX_DELAY) == pdTRUE) {
-      if (db == NULL) {
-        // prova a riaprire il DB se chiuso
-        if (!init_db()) {
-          Serial.println("DB reopen failed, dropping packet");
-          continue;
-        }
-      }
-      if (!db_insert_packet(db, &item)) {
+      if (!addPacket(item)) {
         Serial.println("Insert failed for packet");
       } else {
         Serial.println("Packet saved to DB");
@@ -184,40 +44,50 @@ void db_task(void *pv) {
 }
 
 // To be called when starting
-void start_db_worker() {
-  pktQueue = xQueueCreate(32, sizeof(packet_item_t));  
-  xTaskCreatePinnedToCore(db_task, "db_packet_task", 4096, NULL, 1, NULL, 1);
-
+void initDBWorkers() {
   frQueue = xQueueCreate(32, sizeof(pwngrid_peer));  
-  xTaskCreatePinnedToCore(db_task, "db_friend_task", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(dbFriendTask, "dbFriendTask", 4096, NULL, 1, NULL, 1);
+
+  pktQueue = xQueueCreate(32, sizeof(packet_item_t));  
+  xTaskCreatePinnedToCore(dbPacketTask, "dbPacketTask", 4096, NULL, 1, NULL, 1);
 }
 
 // Call from promiscuous callback: ENQUEUE only
 void enqueue_packet_from_sniffer(const uint8_t *pkt, size_t len, const uint8_t mac_bssid[6],
                                  const char *type, uint8_t channel) {
-  if (!pktQueue) return;
+  if (!pktQueue) {
+    Serial.println("enqueue_packet_from_sniffer error: pktQueue is invalid");
+    return;
+  }
   packet_item_t it;
   if (len > MAX_PKT_SAVE) len = MAX_PKT_SAVE;
   memcpy(it.data, pkt, len);
   it.len = len;
   it.channel = channel;
-  mac_to_string(mac_bssid, it.bssid);
+  MAC2str(mac_bssid, it.bssid);
   strncpy(it.type, type, sizeof(it.type) - 1);
   it.type[sizeof(it.type) - 1] = 0;
   it.ts_ms = (int64_t)(esp_timer_get_time() / 1000);  // ms
   BaseType_t ok = xQueueSend(pktQueue, &it, 0);       // no wait
   if (ok != pdTRUE) {
-    // queue full: drop packet (log if vuoi)
+    Serial.println("Failed enqueuing packet");
+    return;
   }
+  Serial.println("Packet added to queue");
 }
 
 void enqueue_friend_from_sniffer(pwngrid_peer a_friend) {
-  if (!frQueue) return;
-  packet_item_t it;
+  if (!frQueue) {
+    Serial.println("enqueue_friend_from_sniffer error: frQueue is invalid");
+    return;
+  }
+
   BaseType_t ok = xQueueSend(frQueue, &a_friend, 0);       // no wait
   if (ok != pdTRUE) {
-    // queue full: drop packet (log if vuoi)
+    Serial.println("Failed enqueuing friend");
+    return;
   }
+  Serial.println("Friend added to queue");
 }
 
 uint8_t getPwngridTotalPeers() {
@@ -233,7 +103,7 @@ pwngrid_peer *getPwngridPeers() {
   return pwngrid_peers;
 }
 uint8_t getPwngridTotalPwned() {
-  return EEPROM.read(1) + pwngrid_pwned_run;
+  return EEPROM.read(1);
 }
 uint8_t getPwngridRunPwned() {
   return pwngrid_pwned_run;
@@ -364,10 +234,10 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi, int channel) {
   pwngrid_friends_run++;
   pwngrid_friends_tot++;
 
+  enqueue_friend_from_sniffer(pwngrid_peers[pwngrid_friends_tot]);
+
   EEPROM.write(0, pwngrid_friends_tot);
   EEPROM.commit();
-
-  Serial.println("Peer added.");
 }
 
 const int away_threshold = 120000;
@@ -691,9 +561,8 @@ void initPwngrid() {
 
   Serial.println("Init Pwngrid");
 
-  if (!init_db()) {
-    Serial.println("Failed initting DB!");
-  }
+  initDB();
+  initDBWorkers();
 
   // Disable WiFi logging
   esp_log_level_set("wifi", ESP_LOG_NONE);
