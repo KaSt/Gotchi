@@ -58,3 +58,33 @@ void setDeviceName(const char* name) {
   saveConfig();
   Serial.println("setDeviceName done.");
 }
+
+int getPersonality() {
+  return int(device_config.personality);
+}
+
+String getPersonalityText() {
+  String pers;
+  switch (device_config.personality) {
+    case PASSIVE:
+      return "P";
+      break;
+    case AGGRESSIVE:
+      return "A";
+      break;
+    default:
+      return "F";
+      break;
+  }
+}
+
+void setPersonality(int personality) {
+  Serial.println("Setting personality...");
+  if (personality != FRIENDLY && personality != PASSIVE && personality != AGGRESSIVE) {
+    Serial.println("Wrong Personality.");
+    return;
+  }
+  device_config.personality = personality;
+  saveConfig();
+  Serial.println("setPersonality done.");
+}

@@ -22,23 +22,32 @@ struct menu {
 };
 
 menu main_menu[] = {
-    {"Friends", 2},
-    {"Settings", 4},
-    {"About", 8},
-    {"Back to Main", 99}  // Added back option
+  { "Friends", 2 },
+  { "Settings", 4 },
+  { "About", 8 },
+  { "Back to Main", 99 }  // Added back option
 };
 
 menu settings_menu[] = {
-    {"AP Mode", 40},
-    {"Back", 41},
+  { "AP Mode", 40 },
+  { "Personality", 42 },
+  { "Back", 41 },
 };
 
 menu nearby_menu[] = {
-    {"Back", 41},
+  { "Back", 41 },
+};
+
+menu personality_menu[] = {
+  { "Friendly", 43 },
+  { "Passive", 44 },
+  { "Aggressive", 45 },
+  { "Back", 41 },
 };
 
 int main_menu_len = sizeof(main_menu) / sizeof(menu);
 int settings_menu_len = sizeof(settings_menu) / sizeof(menu);
+int personality_menu_len = sizeof(personality_menu) / sizeof(menu);
 
 bool menu_open = false;
 uint8_t menu_current_cmd = 0;
@@ -73,57 +82,51 @@ bool keyboard_changed = false;
 
 // Long press to toggle menu or select item
 bool toggleMenuBtnPressed() {
-  #if defined(ARDUINO_M5STACK_CARDPUTER)
-    return M5Cardputer.BtnA.isPressed() ||
-          (keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed('m') ||
-                                M5Cardputer.Keyboard.isKeyPressed('`')));
-  #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
-    return M5.BtnA.wasHold();
-  #else
-    return M5.BtnA.wasHold();
-  #endif
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  return M5Cardputer.BtnA.isPressed() || (keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed('m') || M5Cardputer.Keyboard.isKeyPressed('`')));
+#elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
+  return M5.BtnA.wasHold();
+#else
+  return M5.BtnA.wasHold();
+#endif
 }
 
 // Short press/click to navigate (was "OK")
 bool isNextPressed() {
-  #if defined(ARDUINO_M5STACK_CARDPUTER)
-    return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed('.') ||
-                                  M5Cardputer.Keyboard.isKeyPressed('/') ||
-                                  M5Cardputer.Keyboard.isKeyPressed(KEY_TAB) ||
-                                  M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER));
-  #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
-    return M5.BtnA.wasClicked();
-  #else
-    // For AtomS3: single click/press to navigate
-    return M5.BtnA.wasClicked();
-  #endif
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed('.') || M5Cardputer.Keyboard.isKeyPressed('/') || M5Cardputer.Keyboard.isKeyPressed(KEY_TAB) || M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER));
+#elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
+  return M5.BtnA.wasClicked();
+#else
+  // For AtomS3: single click/press to navigate
+  return M5.BtnA.wasClicked();
+#endif
 }
 
 // Not used in single-button mode, but kept for compatibility
 bool isPrevPressed() {
-  #if defined(ARDUINO_M5STACK_CARDPUTER)
-      return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed(',') ||
-                                  M5Cardputer.Keyboard.isKeyPressed(';'));
-  #elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
-      return M5.BtnB.wasClicked();
-  #else
-    return false;  // Not used on AtomS3
-  #endif
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  return keyboard_changed && (M5Cardputer.Keyboard.isKeyPressed(',') || M5Cardputer.Keyboard.isKeyPressed(';'));
+#elif defined(ARDUINO_M5STACK_STICKC) || defined(ARDUINO_M5STACK_STICKC_PLUS) || defined(ARDUINO_M5STACK_STICKC_PLUS2)
+  return M5.BtnB.wasClicked();
+#else
+  return false;  // Not used on AtomS3
+#endif
 }
 
 void updateUi(bool show_toolbars) {
   ////Serial.println("UI - updateUi.");
 
-  #ifdef ARDUINO_M5STACK_CARDPUTER
-    keyboard_changed = M5Cardputer.Keyboard.isChange();
-  #else
-    keyboard_changed = false;
-  #endif
+#ifdef ARDUINO_M5STACK_CARDPUTER
+  keyboard_changed = M5Cardputer.Keyboard.isChange();
+#else
+  keyboard_changed = false;
+#endif
 
   // Long press toggles menu or selects item
   if (toggleMenuBtnPressed()) {
     //Serial.println("UI - Long press detected");
-    
+
     // If in AP config mode, exit it
     if (isAPModeActive()) {
       exitAPConfigMode();
@@ -132,7 +135,7 @@ void updateUi(bool show_toolbars) {
       menu_current_opt = 0;
       return;
     }
-    
+
     // If menu is NOT open, open it
     if (!menu_open) {
       //Serial.println("UI - Opening menu");
@@ -140,21 +143,21 @@ void updateUi(bool show_toolbars) {
       menu_current_cmd = 0;
       menu_current_opt = 0;
       menu_max_opt = main_menu_len;
-    } 
+    }
     // If menu IS open, select current option
     else {
       //Serial.printf("UI - Selecting menu option: cmd=%d, opt=%d\n", menu_current_cmd, menu_current_opt);
-      
+
       // Handle selection based on current menu
       switch (menu_current_cmd) {
         case 0:  // Main menu
           menu_current_cmd = main_menu[menu_current_opt].command;
           menu_current_opt = 0;
-          
+
           // Set max options for new menu
-          if (menu_current_cmd == 2) {  // Nearby menu
+          if (menu_current_cmd == 2) {                     // Nearby menu
             menu_max_opt = getPwngridRunTotalPeers() + 1;  // +1 for Back
-          } else if (menu_current_cmd == 4) {  // Settings menu
+          } else if (menu_current_cmd == 4) {              // Settings menu
             menu_max_opt = settings_menu_len;
           } else if (menu_current_cmd == 8) {  // About - just back
             menu_max_opt = 1;
@@ -164,7 +167,7 @@ void updateUi(bool show_toolbars) {
             menu_current_opt = 0;
           }
           break;
-          
+
         case 2:  // Nearby menu
           // If "Back" is selected (last option)
           if (menu_current_opt >= getPwngridRunTotalPeers()) {
@@ -174,26 +177,43 @@ void updateUi(bool show_toolbars) {
           }
           // Otherwise viewing a peer, just stay here
           break;
-          
+
         case 4:  // Settings menu
           menu_current_cmd = settings_menu[menu_current_opt].command;
           menu_current_opt = 0;
-          
+
           if (menu_current_cmd == 40) {  // WiFi Config
             // Will be handled in drawMenu
+          } else if (menu_current_cmd == 42) {
+            Serial.println("Clicked on Personality.");
           } else if (menu_current_cmd == 41) {  // Back
             menu_current_cmd = 0;
             menu_current_opt = 0;
             menu_max_opt = main_menu_len;
           }
           break;
-          
+
         case 8:  // About menu - long press goes back
           menu_current_cmd = 0;
           menu_current_opt = 0;
           menu_max_opt = main_menu_len;
           break;
-          
+
+        case 42:  // Personality menu - Choose Gotchi's personality.
+          Serial.println("In the Personality menu");
+          menu_current_cmd = personality_menu[menu_current_opt].command;
+          menu_current_opt = 0;
+
+          if (menu_current_cmd == 43) {
+            Serial.println("Clicked on Personality Friendly.");
+            setPersonality(FRIENDLY);
+          } else if (menu_current_cmd == 44) {
+            Serial.println("Clicked on Personality Passive.");
+            setPersonality(PASSIVE);
+          } else if (menu_current_cmd == 45) {
+            Serial.println("Clicked on Personality Aggressive.");
+            setPersonality(AGGRESSIVE);
+          }
         default:
           menu_current_cmd = 0;
           menu_current_opt = 0;
@@ -223,7 +243,7 @@ void updateUi(bool show_toolbars) {
   //Serial.println("UI - Draw canvas.");
 
   drawTopCanvas();
-  drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(),
+  drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(), getPwngridRunPwned(), getPwngridTotalPwned(),
                    getPwngridLastFriendName(), getPwngridClosestRssi());
 
   //Serial.println("UI - Menu or Mood.");
@@ -253,7 +273,10 @@ void drawTopCanvas() {
   canvas_top.setTextColor(GREEN);
   canvas_top.setColor(GREEN);
   canvas_top.setTextDatum(top_left);
-  canvas_top.drawString("CH *", 0, 3);
+
+  char top_text[25] = "CH * [F]";
+  snprintf(top_text, sizeof(top_text), "CH * [%s]", (getPersonalityText()).c_str());
+  canvas_top.drawString(top_text, 0, 3);
   canvas_top.setTextDatum(top_right);
   unsigned long ellapsed = millis() / 1000;
   int8_t h = ellapsed / 3600;
@@ -262,7 +285,7 @@ void drawTopCanvas() {
   int8_t s = sr % 60;
   if (display_w > 128) {
     char right_str[50] = "UPS 0%  UP 00:00:00";
-    snprintf(right_str, sizeof(right_str), "UPS %i%% UP %02d:%02d:%02d", 
+    snprintf(right_str, sizeof(right_str), "UPS %i%% UP %02d:%02d:%02d",
              M5.Power.getBatteryLevel(), h, m, s);
     canvas_top.drawString(right_str, display_w, 3);
   } else {
@@ -291,7 +314,7 @@ String getRssiBars(signed int rssi) {
   return rssi_bars;
 }
 
-void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot,
+void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_run, uint8_t pwned_tot,
                       String last_friend_name, signed int rssi) {
   canvas_bot.fillSprite(BLACK);
   canvas_bot.setTextSize(1);
@@ -300,11 +323,11 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot,
   canvas_bot.setTextDatum(top_left);
 
   String rssi_bars = getRssiBars(rssi);
-  char stats[25] = "FRND 0 (0)";
-  if (friends_run > 0) {
-     snprintf(stats, sizeof(stats), "FRND %d (%d) [%s] %s", 
-         friends_run, friends_tot,
-         last_friend_name.c_str(), rssi_bars.c_str());
+  char stats[25] = "F 0 (0) P 0 (0)";
+  if (friends_run > 0 || pwned_run > 0 || pwned_tot > 0) {
+    snprintf(stats, sizeof(stats), "F %d (%d) P %d (%d) [%s] %s",
+             friends_run, friends_tot, pwned_run, pwned_tot,
+             last_friend_name.c_str(), rssi_bars.c_str());
   }
 
   canvas_bot.drawString(stats, 0, 5);
@@ -329,7 +352,7 @@ void drawMood(String face, String phrase, bool broken) {
   canvas_main.setTextDatum(bottom_center);
   canvas_main.setTextSize(1);
   canvas_main.drawString(phrase, canvas_center_x, canvas_h - 23);
-  
+
   // Add hint text at bottom
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
@@ -357,13 +380,13 @@ void drawMainMenu() {
 
   char display_str[50] = "";
   for (uint8_t i = 0; i < main_menu_len; i++) {
-    snprintf(display_str, sizeof(display_str), "%s %s", 
+    snprintf(display_str, sizeof(display_str), "%s %s",
              (menu_current_opt == i) ? ">" : " ",
              main_menu[i].name);
     int y = PADDING + 20 + (i * ROW_SIZE / 2);
     canvas_main.drawString(display_str, PADDING, y);
   }
-  
+
   // Help text at bottom
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
@@ -373,7 +396,7 @@ void drawMainMenu() {
 
 void drawNearbyMenu() {
   canvas_main.clear(BLACK);
-  canvas_main.setTextSize(1);
+  canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
@@ -394,22 +417,22 @@ void drawNearbyMenu() {
   } else {
     char display_str[50] = "";
     for (uint8_t i = 0; i < len; i++) {
-      snprintf(display_str, sizeof(display_str), "%s %s [%s]", 
-           (menu_current_opt == i) ? ">" : " ",
-           pwngrid_peers[i].name, 
-           getRssiBars(pwngrid_peers[i].rssi).c_str());
+      snprintf(display_str, sizeof(display_str), "%s %s [%s]",
+               (menu_current_opt == i) ? ">" : " ",
+               pwngrid_peers[i].name,
+               getRssiBars(pwngrid_peers[i].rssi).c_str());
       int y = PADDING + 20 + (i * ROW_SIZE / 2);
       canvas_main.drawString(display_str, PADDING, y);
     }
   }
-  
+
   // Back option
   char back_str[50] = "";
-  snprintf(back_str, sizeof(back_str), "%s Back", 
+  snprintf(back_str, sizeof(back_str), "%s Back",
            (menu_current_opt == len) ? ">" : " ");
   int back_y = PADDING + 20 + (len * ROW_SIZE / 2);
   canvas_main.drawString(back_str, PADDING, back_y);
-  
+
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
@@ -419,7 +442,7 @@ void drawNearbyMenu() {
 
 void drawSettingsMenu() {
   canvas_main.fillSprite(BLACK);
-  canvas_main.setTextSize(2);
+  canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
@@ -431,13 +454,13 @@ void drawSettingsMenu() {
 
   char display_str[50] = "";
   for (uint8_t i = 0; i < settings_menu_len; i++) {
-    snprintf(display_str, sizeof(display_str), "%s %s", 
+    snprintf(display_str, sizeof(display_str), "%s %s",
              (menu_current_opt == i) ? ">" : " ",
              settings_menu[i].name);
     int y = PADDING + 20 + (i * ROW_SIZE / 2);
     canvas_main.drawString(display_str, PADDING, y);
   }
-  
+
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
@@ -447,17 +470,17 @@ void drawSettingsMenu() {
 
 void drawAboutMenu() {
   canvas_main.clear(BLACK);
-  
+
   // Title
   canvas_main.setTextColor(YELLOW);
   canvas_main.setTextSize(1);
   canvas_main.setTextDatum(top_center);
   canvas_main.drawString("ABOUT", canvas_center_x, PADDING);
-  
+
   canvas_main.qrcode("https://github.com/viniciusbo/m5-palnagotchi",
                      (display_w / 2) - (display_h * 0.3), PADDING + 25,
                      display_h * 0.5);
-  
+
   // Help text
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
@@ -467,11 +490,11 @@ void drawAboutMenu() {
 
 void drawAPConfigMenu() {
   canvas_main.fillSprite(BLACK);
-  canvas_main.setTextSize(1);
+  canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
   canvas_main.setColor(GREEN);
   canvas_main.setTextDatum(top_left);
-  
+
   int y = PADDING;
   canvas_main.setCursor(0, y);
   canvas_main.println("AP Active");
@@ -505,11 +528,33 @@ void drawAPConfigMenu() {
   canvas_main.println("Hold button to exit");
 }
 
+void drawPersonalityMenu() {
+  canvas_main.fillSprite(BLACK);
+  canvas_main.setTextSize(1.5);
+  canvas_main.setTextColor(GREEN);
+  canvas_main.setColor(GREEN);
+  canvas_main.setTextDatum(top_left);
+
+  // Title
+  canvas_main.setTextColor(YELLOW);
+  canvas_main.drawString("PERSONALITY", PADDING, PADDING);
+  canvas_main.setTextColor(GREEN);
+
+  char display_str[50] = "";
+  for (uint8_t i = 0; i < personality_menu_len; i++) {
+    snprintf(display_str, sizeof(display_str), "%s %s",
+             (menu_current_opt == i) ? ">" : " ",
+             personality_menu[i].name);
+    int y = PADDING + 20 + (i * ROW_SIZE / 2);
+    canvas_main.drawString(display_str, PADDING, y);
+  }
+}
+
 void drawMenu() {
   // Check if in AP config mode
   uint8_t device_state = getDeviceState();
   if (device_state == STATE_AP_CONFIG) {
-    if (!isAPModeActive()) { 
+    if (!isAPModeActive()) {
       startAPMode();
     }
     drawAPConfigMenu();
@@ -539,6 +584,10 @@ void drawMenu() {
       menu_current_cmd = 0;
       menu_current_opt = 0;
       drawMainMenu();
+      break;
+    case 42:
+      // Personality setting
+      drawPersonalityMenu();
       break;
     case 99:
       // Back to main screen

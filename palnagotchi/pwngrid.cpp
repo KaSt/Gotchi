@@ -2,30 +2,257 @@
 #include "config.h"
 
 uint8_t pwngrid_friends_tot = 0;
+uint8_t pwngrid_friends_run = 0;
+
 pwngrid_peer pwngrid_peers[255];
 String pwngrid_last_friend_name = "";
 
-DeviceConfig* config = getConfig();
+uint8_t pwngrid_pwned_tot;
+uint8_t pwngrid_pwned_run;
 
-uint8_t getPwngridTotalPeers() { return EEPROM.read(0) + pwngrid_friends_tot; }
-uint8_t getPwngridRunTotalPeers() { return pwngrid_friends_tot; }
-String getPwngridLastFriendName() { return pwngrid_last_friend_name; }
-pwngrid_peer *getPwngridPeers() { return pwngrid_peers; }
+DeviceConfig *config = getConfig();
+
+
+// helper: format MAC -> string
+void mac_to_string(const uint8_t mac[6], char *out /*18 bytes*/) {
+  sprintf(out, "%02x:%02x:%02x:%02x:%02x:%02x",
+          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+bool init_db() {
+  if (!SPIFFS.begin(true)) {  // format if failed
+    Serial.println("Failed to mount SPIFFS");
+    return false;
+  }
+  // opzionale: sqlite initialization (la library può richiederla)
+  sqlite3_initialize();
+
+  int rc = sqlite3_open(DB_PATH, &db);
+  if (rc != SQLITE_OK) {
+    Serial.print("sqlite3_open error: ");
+    Serial.println(sqlite3_errmsg(db));
+    if (db) sqlite3_close(db);
+    db = NULL;
+    return false;
+  }
+
+  const char *create_packets_sql =
+    "CREATE TABLE IF NOT EXISTS packets ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "ts INTEGER,"
+    "bssid TEXT,"
+    "type TEXT,"
+    "channel INTEGER,"
+    "meta TEXT,"
+    "pkt BLOB"
+    ");"
+    "CREATE INDEX IF NOT EXISTS idx_packets_bssid ON packets(bssid);"
+    "CREATE INDEX IF NOT EXISTS idx_packets_ts ON packets(ts);";
+
+  char *errmsg = NULL;
+  rc = sqlite3_exec(db, create_packets_sql, 0, 0, &errmsg);
+  if (rc != SQLITE_OK) {
+    Serial.print("Create table packets failed: ");
+    if (errmsg) Serial.println(errmsg);
+    if (errmsg) sqlite3_free(errmsg);
+    sqlite3_close(db);
+    db = NULL;
+    return false;
+  }
+
+  const char *create_friends_sql =
+    "CREATE TABLE IF NOT EXISTS friends ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "epoch INTEGER,"
+    "face TEXT,"
+    "grid_version TEXT,"
+    "identity TEXT,"
+    "name TEXT,"
+    "session_id TEXT,"
+    "uptime INTEGER,"
+    "version TEXT,"
+    "last_ping INTEGER,"
+    "gone INTEGER,"
+    "ts INTEGER,"
+    "rssi TEXT,"
+    "channel INTEGER"
+    ");"
+    "CREATE INDEX IF NOT EXISTS idx_friends_identity ON friends(identity);"
+    "CREATE INDEX IF NOT EXISTS idx_friends_name ON friends(name);"
+    "CREATE INDEX IF NOT EXISTS idx_friends_ts ON friends(ts);";
+
+  rc = sqlite3_exec(db, create_friends_sql, 0, 0, &errmsg);
+  if (rc != SQLITE_OK) {
+    Serial.print("Create table friends failed: ");
+    if (errmsg) Serial.println(errmsg);
+    if (errmsg) sqlite3_free(errmsg);
+    sqlite3_close(db);
+    db = NULL;
+    return false;
+  }
+
+  Serial.println("DB ready");
+  return true;
+}
+
+// Called by DB task)
+bool db_insert_packet(sqlite3 *dbh, const packet_item_t *it) {
+  if (!dbh || !it) return false;
+  const char *sql = "INSERT INTO packets (ts, bssid, type, channel, meta, pkt) VALUES (?, ?, ?, ?, ?, ?);";
+  sqlite3_stmt *stmt = NULL;
+  int rc = sqlite3_prepare_v2(dbh, sql, -1, &stmt, NULL);
+  if (rc != SQLITE_OK) {
+    Serial.print("prepare insert into packets fail: ");
+    Serial.println(sqlite3_errmsg(dbh));
+    return false;
+  }
+
+  // bind: 1-based params
+  sqlite3_bind_int64(stmt, 1, it->ts_ms);
+  sqlite3_bind_text(stmt, 2, it->bssid, -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, it->type, -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 4, it->channel);
+  sqlite3_bind_text(stmt, 5, "{}", -1, SQLITE_TRANSIENT);  // meta placeholder
+  // bind blob (pkt)
+  sqlite3_bind_blob(stmt, 6, it->data, (int)it->len, SQLITE_TRANSIENT);
+
+  rc = sqlite3_step(stmt);
+  if (rc != SQLITE_DONE) {
+    Serial.print("step/insert into packets failed: ");
+    Serial.println(sqlite3_errmsg(dbh));
+    sqlite3_finalize(stmt);
+    return false;
+  }
+  sqlite3_finalize(stmt);
+  return true;
+}
+
+bool db_insert_friend(sqlite3 *dbh, const pwngrid_peer *it) {
+  if (!dbh || !it) return false;
+  const char *sql = "INSERT INTO friends (face, grid_version, identity, name, session_id, uptime, version, last_ping, gone, ts, rssi, channel) VALUES (?, ?, ?, ?,?, ?, ?, ?,?, ?, ?, ?);";
+  sqlite3_stmt *stmt = NULL;
+  int rc = sqlite3_prepare_v2(dbh, sql, -1, &stmt, NULL);
+  if (rc != SQLITE_OK) {
+    Serial.print("prepare friend insert fail: ");
+    Serial.println(sqlite3_errmsg(dbh));
+    return false;
+  }
+
+  // bind: 1-based params
+  sqlite3_bind_text(stmt, 1, it->face.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, it->grid_version.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, it->identity.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, it->name.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 5, it->session_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 6, it->uptime);
+  sqlite3_bind_text(stmt, 7, it->version.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 8, it->last_ping);
+  sqlite3_bind_int(stmt, 9, it->gone);
+  sqlite3_bind_int64(stmt, 10, it->timestamp);
+  sqlite3_bind_int64(stmt, 11, it->rssi);
+  sqlite3_bind_int(stmt, 12, it->channel);
+
+  rc = sqlite3_step(stmt);
+  if (rc != SQLITE_DONE) {
+    Serial.print("step/insert into friends failed: ");
+    Serial.println(sqlite3_errmsg(dbh));
+    sqlite3_finalize(stmt);
+    return false;
+  }
+  sqlite3_finalize(stmt);
+  return true;
+}
+
+void db_task(void *pv) {
+  packet_item_t item;
+  for (;;) {
+    if (xQueueReceive(pktQueue, &item, portMAX_DELAY) == pdTRUE) {
+      if (db == NULL) {
+        // prova a riaprire il DB se chiuso
+        if (!init_db()) {
+          Serial.println("DB reopen failed, dropping packet");
+          continue;
+        }
+      }
+      if (!db_insert_packet(db, &item)) {
+        Serial.println("Insert failed for packet");
+      } else {
+        Serial.println("Packet saved to DB");
+      }
+    }
+  }
+}
+
+// To be called when starting
+void start_db_worker() {
+  pktQueue = xQueueCreate(32, sizeof(packet_item_t));  
+  xTaskCreatePinnedToCore(db_task, "db_packet_task", 4096, NULL, 1, NULL, 1);
+
+  frQueue = xQueueCreate(32, sizeof(pwngrid_peer));  
+  xTaskCreatePinnedToCore(db_task, "db_friend_task", 4096, NULL, 1, NULL, 1);
+}
+
+// Call from promiscuous callback: ENQUEUE only
+void enqueue_packet_from_sniffer(const uint8_t *pkt, size_t len, const uint8_t mac_bssid[6],
+                                 const char *type, uint8_t channel) {
+  if (!pktQueue) return;
+  packet_item_t it;
+  if (len > MAX_PKT_SAVE) len = MAX_PKT_SAVE;
+  memcpy(it.data, pkt, len);
+  it.len = len;
+  it.channel = channel;
+  mac_to_string(mac_bssid, it.bssid);
+  strncpy(it.type, type, sizeof(it.type) - 1);
+  it.type[sizeof(it.type) - 1] = 0;
+  it.ts_ms = (int64_t)(esp_timer_get_time() / 1000);  // ms
+  BaseType_t ok = xQueueSend(pktQueue, &it, 0);       // no wait
+  if (ok != pdTRUE) {
+    // queue full: drop packet (log if vuoi)
+  }
+}
+
+void enqueue_friend_from_sniffer(pwngrid_peer a_friend) {
+  if (!frQueue) return;
+  packet_item_t it;
+  BaseType_t ok = xQueueSend(frQueue, &a_friend, 0);       // no wait
+  if (ok != pdTRUE) {
+    // queue full: drop packet (log if vuoi)
+  }
+}
+
+uint8_t getPwngridTotalPeers() {
+  return pwngrid_friends_run;
+}
+uint8_t getPwngridRunTotalPeers() {
+  return pwngrid_friends_tot;
+}
+String getPwngridLastFriendName() {
+  return pwngrid_last_friend_name;
+}
+pwngrid_peer *getPwngridPeers() {
+  return pwngrid_peers;
+}
+uint8_t getPwngridTotalPwned() {
+  return EEPROM.read(1) + pwngrid_pwned_run;
+}
+uint8_t getPwngridRunPwned() {
+  return pwngrid_pwned_run;
+}
 
 // Had to remove Radiotap headers, since its automatically added
 // Also had to remove the last 4 bytes (frame check sequence)
 const uint8_t pwngrid_beacon_raw[] = {
-    0x80, 0x00,                          // FC
-    0x00, 0x00,                          // Duration
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // DA (broadcast)
-    0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,  // SA
-    0xa1, 0x00, 0x64, 0xe6, 0x0b, 0x8b,  // BSSID
-    0x40, 0x43,  // Sequence number/fragment number/seq-ctl
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // Timestamp
-    0x64, 0x00,                                      // Beacon interval
-    0x11, 0x04,                                      // Capability info
-    // 0xde (AC = 222) + 1 byte payload len + payload (AC Header)
-    // For each 255 bytes of the payload, a new AC header should be set
+  0x80, 0x00,                                      // FC
+  0x00, 0x00,                                      // Duration
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff,              // DA (broadcast)
+  0xde, 0xad, 0xbe, 0xef, 0xde, 0xad,              // SA
+  0xa1, 0x00, 0x64, 0xe6, 0x0b, 0x8b,              // BSSID
+  0x40, 0x43,                                      // Sequence number/fragment number/seq-ctl
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // Timestamp
+  0x64, 0x00,                                      // Beacon interval
+  0x11, 0x04,                                      // Capability info
+                                                   // 0xde (AC = 222) + 1 byte payload len + payload (AC Header)
+                                                   // For each 255 bytes of the payload, a new AC header should be set
 };
 
 const int raw_beacon_len = sizeof(pwngrid_beacon_raw);
@@ -44,7 +271,7 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   pal_json["epoch"] = 1;
   pal_json["grid_version"] = "1.10.3";
   pal_json["identity"] =
-      "32e9f315e92d974342c93d0fd952a914bfb4e6838953536ea6f63d54db6b9610";
+    "32e9f315e92d974342c93d0fd952a914bfb4e6838953536ea6f63d54db6b9610";
   pal_json["pwnd_run"] = 0;
   pal_json["pwnd_tot"] = 0;
   pal_json["session_id"] = "a2:00:64:e6:0b:8b";
@@ -96,14 +323,14 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   esp_err_t result = esp_wifi_80211_tx(WIFI_IF_AP, pwngrid_beacon_frame,
                                        sizeof(pwngrid_beacon_frame), false);
 
-  //Serial.println("Sent Advertise Beacon");                                       
+  //Serial.println("Sent Advertise Beacon");
   return result;
 }
 
-void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
+void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi, int channel) {
   String identity = json["identity"].as<String>();
 
-  //Serial.println("pwngridAddPeer...");         
+  //Serial.println("pwngridAddPeer...");
 
   for (uint8_t i = 0; i < pwngrid_friends_tot; i++) {
     // Check if peer identity is already in peers array
@@ -122,18 +349,21 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi) {
   pwngrid_peers[pwngrid_friends_tot].name = json["name"].as<String>();
   pwngrid_peers[pwngrid_friends_tot].face = json["face"].as<String>();
   pwngrid_peers[pwngrid_friends_tot].epoch = json["epoch"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].grid_version =
-      json["grid_version"].as<String>();
+  pwngrid_peers[pwngrid_friends_tot].grid_version = json["grid_version"].as<String>();
   pwngrid_peers[pwngrid_friends_tot].identity = identity;
   pwngrid_peers[pwngrid_friends_tot].pwnd_run = json["pwnd_run"].as<int>();
   pwngrid_peers[pwngrid_friends_tot].pwnd_tot = json["pwnd_tot"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].session_id =
-      json["session_id"].as<String>();
+  pwngrid_peers[pwngrid_friends_tot].session_id = json["session_id"].as<String>();
   pwngrid_peers[pwngrid_friends_tot].timestamp = json["timestamp"].as<int>();
   pwngrid_peers[pwngrid_friends_tot].uptime = json["uptime"].as<int>();
   pwngrid_peers[pwngrid_friends_tot].version = json["version"].as<String>();
+  pwngrid_peers[pwngrid_friends_tot].channel = channel;
+
   pwngrid_last_friend_name = pwngrid_peers[pwngrid_friends_tot].name;
+
+  pwngrid_friends_run++;
   pwngrid_friends_tot++;
+
   EEPROM.write(0, pwngrid_friends_tot);
   EEPROM.commit();
 
@@ -190,10 +420,204 @@ void getMAC(char *addr, uint8_t *data, uint16_t offset) {
           data[offset + 4], data[offset + 5]);
 }
 
-void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
-  if (( (snifferPacket->payload[30] == 0x88 && snifferPacket->payload[31] == 0x8e)|| ( snifferPacket->payload[32] == 0x88 && snifferPacket->payload[33] == 0x8e) )) {
-    Serial.println("We have EAPOL");
+// helper: stampa un buffer in hex
+void printHex(const uint8_t *b, size_t len) {
+  for (size_t i = 0; i < len; ++i) {
+    if (b[i] < 0x10) Serial.print('0');
+    Serial.print(b[i], HEX);
+    if (i + 1 < len) Serial.print(':');
   }
+  Serial.println();
+}
+
+void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
+  wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)snifferPacket;
+  uint8_t *pkt = ppkt->payload;
+  int pkt_len = ppkt->rx_ctrl.sig_len ? ppkt->rx_ctrl.sig_len : 300;  // usa la len reale se disponibile
+  int rx_channel = ppkt->rx_ctrl.channel;
+
+  bool isEapol = false;
+  if (pkt_len > 34) {  // semplice bound check
+    if ((pkt[30] == 0x88 && pkt[31] == 0x8e) || (pkt[32] == 0x88 && pkt[33] == 0x8e)) {
+      isEapol = true;
+    }
+  }
+
+  if (isEapol) {
+    Serial.println("We have EAPOL");
+    drawMood(pwnagotchi_moods[10], "I love EAPOLs!", false);
+    pwngrid_pwned_run++;
+    pwngrid_pwned_tot++;
+    EEPROM.write(1, pwngrid_pwned_tot);
+    if (pkt_len < 24) return;
+
+    // frame control (little-endian)
+    uint16_t fc = pkt[0] | (pkt[1] << 8);
+    uint8_t fc_type = (fc >> 2) & 0x3;  // 0=mgmt,1=ctrl,2=data
+    bool toDS = fc & 0x0100;
+    bool fromDS = fc & 0x0200;
+
+    uint8_t addr1[6], addr2[6], addr3[6], addr4[6];
+    memcpy(addr1, pkt + 4, 6);
+    memcpy(addr2, pkt + 10, 6);
+    memcpy(addr3, pkt + 16, 6);
+    if (pkt_len >= 30) memcpy(addr4, pkt + 24, 6);
+
+    uint8_t bssid[6];
+    if (fc_type == 0) {  // management
+      memcpy(bssid, addr3, 6);
+    } else if (fc_type == 2) {  // data
+      if (!toDS && !fromDS) {
+        memcpy(bssid, addr3, 6);
+      } else if (!toDS && fromDS) {
+        memcpy(bssid, addr2, 6);
+      } else if (toDS && !fromDS) {
+        memcpy(bssid, addr3, 6);
+      } else {  // toDS && fromDS
+        memcpy(bssid, addr4, 6);
+      }
+    } else {
+      // control frames: non gestiti
+      memcpy(bssid, addr3, 6);  // fallback
+    }
+    enqueue_packet_from_sniffer(pkt, pkt_len, bssid, "EAPOL", (uint8_t)rx_channel);
+  }
+
+  // --- ricerca RSN IE (element ID 0x30) per PMKID ---
+  // L'RSN IE può comparire nei management frames (beacon/probe/assoc/etc)
+  // e la struttura interna ha campi variabili. Fare parsing difensivo.
+  // Cerchiamo semplicemente il tag 0x30 (RSN) e poi scorriamo al suo interno
+  // per trovare PMKID count + PMKID list (se presenti).
+  //
+  // Nota: evitare di leggere oltre il buffer: assumiamo che il pacchetto abbia almeno 64 byte,
+  // ma facciamo controlli di lunghezza usando il length dichiarato se disponibile.
+  size_t max_scan = 230;  // limite ragionevole per non scorrere troppo oltre
+  // se la struttura wifi_promiscuous_pkt_t fornisce una lunghezza, sostituire max_scan con quella.
+  // es.: size_t pkt_len = snifferPacket->rx_ctrl.sig_len; (dipende SDK)
+
+  for (size_t i = 0; i + 1 < max_scan; ++i) {
+    // cerca element ID 0x30 (RSN IE)
+    if (pkt[i] == 0x30) {
+      // assicurarsi di poter leggere la lunghezza dell'IE
+      uint8_t ie_len = pkt[i + 1];
+      size_t ie_start = i + 2;
+      size_t ie_end = ie_start + ie_len;
+      if (ie_end > max_scan) {
+        // IE troncato o va oltre il buffer di scan: skip
+        continue;
+      }
+
+      // Parsing difensivo dell'RSN IE:
+      // struttura generale (semplificata):
+      // Version (2) | GroupCipher(4) |
+      // PairwiseCount(2) + PairwiseList(4*count) |
+      // AKMCount(2) + AKMList(4*count) |
+      // [RSNCapabilities(2)] |
+      // [PMKIDCount(2) + PMKIDList(16*count)]
+      size_t pos = ie_start;
+      if (pos + 2 > ie_end) continue;  // versione
+      pos += 2;                        // version
+
+      // group cipher 4 bytes
+      if (pos + 4 > ie_end) continue;
+      pos += 4;
+
+      // pairwise count (2 bytes)
+      if (pos + 2 > ie_end) continue;
+      uint16_t pairwise_count = pkt[pos] | (pkt[pos + 1] << 8);
+      pos += 2;
+      // pairwise list: 4 * count
+      size_t pairwise_bytes = (size_t)pairwise_count * 4;
+      if (pos + pairwise_bytes > ie_end) continue;
+      pos += pairwise_bytes;
+
+      // AKM count (2)
+      if (pos + 2 > ie_end) continue;
+      uint16_t akm_count = pkt[pos] | (pkt[pos + 1] << 8);
+      pos += 2;
+      // akm list: 4 * count
+      size_t akm_bytes = (size_t)akm_count * 4;
+      if (pos + akm_bytes > ie_end) continue;
+      pos += akm_bytes;
+
+      // after AKM, there **may** be RSN Capabilities (2 bytes)
+      if (pos + 2 <= ie_end) {
+        // peek but not mandatory to have
+        // we will advance if space left
+        // but we must ensure we don't step over in case PMKID not present
+        // so check remaining length
+        // compute remaining bytes
+      }
+
+      // compute remaining bytes in IE
+      size_t remaining = (ie_end > pos) ? (ie_end - pos) : 0;
+      if (remaining >= 2) {
+        // possible RSN Capabilities present (2 bytes) + maybe PMKIDCount after
+        // We'll try to detect PMKIDCount by checking if after RSN Capabilities there is at least 2 bytes for pmkid_count
+        size_t pos_after_caps = pos;
+        if (pos_after_caps + 2 <= ie_end) {
+          // treat the next two as RSN Capabilities (if present)
+          pos_after_caps += 2;
+        }
+        // check if we have PMKID count field now
+        if (pos_after_caps + 2 <= ie_end) {
+          uint16_t pmkid_count = pkt[pos_after_caps] | (pkt[pos_after_caps + 1] << 8);
+          // sanity check: pmkid_count reasonable (e.g., 1 or small)
+          if (pmkid_count > 0 && pmkid_count <= 8) {
+            // ensure enough bytes for pmkid list (16 * count)
+            size_t needed = (size_t)pmkid_count * 16;
+            if (pos_after_caps + 2 + needed <= ie_end) {
+              Serial.print("Found PMKID count: ");
+              Serial.println(pmkid_count);
+              // read each PMKID (16 bytes each)
+              size_t pmkid_pos = pos_after_caps + 2;
+              for (uint16_t k = 0; k < pmkid_count; ++k) {
+                uint16_t fc = pkt[0] | (pkt[1] << 8);
+                bool toDS = fc & 0x0100;
+                bool fromDS = fc & 0x0200;
+                uint8_t bssid[6];
+                uint8_t fc_type = (fc >> 2) & 0x3;  // 0=mgmt,1=ctrl,2=data
+                uint8_t addr1[6], addr2[6], addr3[6], addr4[6];
+                memcpy(addr1, pkt + 4, 6);
+                memcpy(addr2, pkt + 10, 6);
+                memcpy(addr3, pkt + 16, 6);
+                if (pkt_len >= 30) memcpy(addr4, pkt + 24, 6);
+
+                if (fc_type == 0) {  // management
+                  memcpy(bssid, addr3, 6);
+                } else if (fc_type == 2) {  // data
+                  if (!toDS && !fromDS) {
+                    memcpy(bssid, addr3, 6);
+                  } else if (!toDS && fromDS) {
+                    memcpy(bssid, addr2, 6);
+                  } else if (toDS && !fromDS) {
+                    memcpy(bssid, addr3, 6);
+                  } else {  // toDS && fromDS
+                    memcpy(bssid, addr4, 6);
+                  }
+                } else {
+                  // control frames: non gestiti
+                  memcpy(bssid, addr3, 6);  // fallback
+                }
+
+                Serial.print("PMKID #");
+                Serial.print(k);
+                Serial.print(": ");
+                printHex(&pkt[pmkid_pos + k * 16], 16);
+                enqueue_packet_from_sniffer(pkt, 16, bssid, "PMKID", (uint8_t)rx_channel);
+              }
+              drawMood(pwnagotchi_moods[10], "I love PMKIDs!", false);
+              pwngrid_pwned_run++;
+              pwngrid_pwned_tot++;
+              EEPROM.write(1, pwngrid_pwned_tot);
+              i = ie_end;  // salta avanti
+              break;
+            }
+          }
+        }
+      }
+    }  // fi if pkt[i] == 0x30
+  }    // for scan
 }
 
 void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
@@ -210,12 +634,11 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
     int len = snifferPacket->rx_ctrl.sig_len - 4;
     int fctl = ntohs(frameControl->fctl);
     const wifi_ieee80211_packet_t *ipkt =
-        (wifi_ieee80211_packet_t *)snifferPacket->payload;
+      (wifi_ieee80211_packet_t *)snifferPacket->payload;
     const WifiMgmtHdr *hdr = &ipkt->hdr;
 
     //Check if we do something about EAPOLs
     if (config->personality == PASSIVE || config->personality == AGGRESSIVE) {
-      Serial.println("We're interested in the received packet");
       handlePacket(snifferPacket);
     }
 
@@ -235,23 +658,19 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
 
         DynamicJsonDocument sniffed_json(2048);  // ArduinoJson v6s
         ArduinoJson::V6215PB2::DeserializationError result =
-            deserializeJson(sniffed_json, essid);
+          deserializeJson(sniffed_json, essid);
 
         if (result == ArduinoJson::V6215PB2::DeserializationError::Ok) {
           // Serial.println("\nSuccessfully parsed json");
           // serializeJson(json, Serial);  // ArduinoJson v6
-          pwngridAddPeer(sniffed_json, snifferPacket->rx_ctrl.rssi);
-        } else if (result == ArduinoJson::V6215PB2::DeserializationError::
-                                 IncompleteInput) {
+          pwngridAddPeer(sniffed_json, snifferPacket->rx_ctrl.rssi, snifferPacket->rx_ctrl.channel);
+        } else if (result == ArduinoJson::V6215PB2::DeserializationError::IncompleteInput) {
           Serial.println("Deserialization error: incomplete input");
-        } else if (result ==
-                   ArduinoJson::V6215PB2::DeserializationError::NoMemory) {
+        } else if (result == ArduinoJson::V6215PB2::DeserializationError::NoMemory) {
           Serial.println("Deserialization error: no memory");
-        } else if (result ==
-                   ArduinoJson::V6215PB2::DeserializationError::InvalidInput) {
+        } else if (result == ArduinoJson::V6215PB2::DeserializationError::InvalidInput) {
           Serial.println("Deserialization error: invalid input");
-        } else if (result ==
-                   ArduinoJson::V6215PB2::DeserializationError::TooDeep) {
+        } else if (result == ArduinoJson::V6215PB2::DeserializationError::TooDeep) {
           Serial.println("Deserialization error: too deep");
         } else {
           Serial.println(essid);
@@ -264,10 +683,18 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
 }
 
 const wifi_promiscuous_filter_t filter = {
-    .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA};
+  .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
+};
 
 void initPwngrid() {
+  int rc;
+
   Serial.println("Init Pwngrid");
+
+  if (!init_db()) {
+    Serial.println("Failed initting DB!");
+  }
+
   // Disable WiFi logging
   esp_log_level_set("wifi", ESP_LOG_NONE);
 

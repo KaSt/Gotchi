@@ -31,5 +31,8 @@ void resetConfig();
 DeviceConfig* getConfig();
 String getDeviceName();
 void setDeviceName(const char* name);
+int getPersonality();
+void setPersonality(const int personality);
+String getPersonalityText();
 
 #endif
