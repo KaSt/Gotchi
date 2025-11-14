@@ -21,6 +21,7 @@ struct DeviceConfig {
   char device_name[32];
   uint8_t brightness;
   int personality;
+  char* identity;
 };
 
 // Configuration functions
@@ -34,5 +35,6 @@ void setDeviceName(const char* name);
 int getPersonality();
 void setPersonality(const int personality);
 String getPersonalityText();
+void setIdentity(const char* identity );
 
 #endif

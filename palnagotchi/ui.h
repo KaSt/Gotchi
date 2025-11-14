@@ -11,9 +11,9 @@ uint8_t getDeviceState();
 
 void initUi();
 void wakeUp();
-void drawMood(String face, String phrase, bool broken = false);
-void drawTopCanvas();
-void drawBottomCanvas(uint8_t friends_run = 0, uint8_t friends_tot = 0, uint8_t pwned_run = 0, uint8_t pwned_tot = 0,
+void drawMood(String face, String phrase, bool broken = false,
                       String last_friend_name = "", signed int rssi = -1000);
+void drawTopCanvas(int channel);
+void drawBottomCanvas(uint8_t friends_run = 0, uint8_t friends_tot = 0, uint8_t pwned_run = 0, uint8_t pwned_tot = 0);
 void drawMenu();
 void updateUi(bool show_toolbars = false);

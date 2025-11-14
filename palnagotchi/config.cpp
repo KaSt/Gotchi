@@ -2,8 +2,10 @@
 #include "esp_err.h"
 
 #include "config.h"
+#include <Preferences.h>
 
 DeviceConfig device_config;
+static String s_identity;  // storage interno sicuro
 
 void initConfig() {
   Serial.println("initConfig...");
@@ -91,3 +93,4 @@ void setPersonality(int personality) {
   saveConfig();
   Serial.println("setPersonality done.");
 }
+

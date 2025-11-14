@@ -11,26 +11,6 @@ void initDB() {
   };
 }
 
-/*
-typedef struct {
-  int epoch;
-  String face;
-  String grid_version;
-  String identity;
-  String name;
-  int pwnd_run;
-  int pwnd_tot;
-  String session_id;
-  int timestamp;
-  int uptime;
-  String version;
-  signed int rssi;
-  int last_ping;
-  bool gone;
-  int channel;
-} pwngrid_peer;
-*/
-
 bool addFriend(pwngrid_peer newFriend) {
   File f = LittleFS.open(FR_TBL, FILE_WRITE);
   if (!f) {
@@ -60,24 +40,19 @@ bool addFriend(pwngrid_peer newFriend) {
   return true;
 }
 
-// Assunzioni:
-// - FR_TBL è un file NDJSON (una riga = un JSON) già definito altrove
-// - pwngrid_peer ha i campi usati sotto (epoch, face, grid_version, identity, name, session_id, timestamp, uptime, version, rssi, last_ping, gone, channel)
-// - LittleFS è già inizializzato
-// - ArduinoJson incluso
+bool mergeFriend(const pwngrid_peer &nf, uint64_t &pwngrid_friends_tot) {
 
-bool mergeFriend(const pwngrid_peer &nf) {
-
-  Serial.println("Checking Friend name: "+nf.name);
+Serial.println(String("Checking Friend name: ") + nf.name);
 
   File in = LittleFS.open(FR_TBL, FILE_READ);
   if (!in) {
-    // DB non ancora creato: inseriamo semplicemente
     Serial.println("Not present in DB yet, calling addFriend for: " + nf.name);
+    pwngrid_friends_tot++;
+    Serial.println("We have now met a total friends of: ");
+    Serial.println(pwngrid_friends_tot);
     return addFriend(nf);
   }
 
-  // File temporaneo per scrittura atomica
   String tmpPath = String(FR_TBL) + ".tmp";
   File out = LittleFS.open(tmpPath.c_str(), FILE_WRITE);
   if (!out) {
@@ -87,7 +62,7 @@ bool mergeFriend(const pwngrid_peer &nf) {
   }
 
   bool found = false;
-  StaticJsonDocument<512> doc; // adegua se le righe sono più corpose
+  StaticJsonDocument<512> doc; // Change according to size
 
   while (in.available()) {
     String line = in.readStringUntil('\n');
@@ -133,7 +108,7 @@ bool mergeFriend(const pwngrid_peer &nf) {
       LittleFS.remove(tmpPath.c_str());
       return false;
     }
-    out2.seek(out2.size()); // assicurati di essere in append
+    out2.seek(out2.size()); 
 
     StaticJsonDocument<256> friendJSON;
     friendJSON["epoch"]        = nf.epoch;

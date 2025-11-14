@@ -6,9 +6,11 @@
 #include "device_state.h"
 #include "config.h"
 #include "ap_config.h"
+
 #include "ui.h"
 
 uint8_t state;
+unsigned long lastRun = 0;
 
 void initM5() {
   auto cfg = M5.config();
@@ -26,7 +28,6 @@ void setup() {
   Serial.begin(115200);
   delay(1000); // Give serial time to initialize
   Serial.println("\n\n=== BOOT START ===");
-
   initM5();
   initConfig();
   initAPConfig();
@@ -75,7 +76,8 @@ void advertise(uint8_t channel) {
 
 void loop() {
   //Serial.printf("Loop Begin\nFree heap: %d bytes\n", ESP.getFreeHeap());
-  
+  unsigned long now = millis();
+
   M5.update();
   #ifdef ARDUINO_M5STACK_CARDPUTER
     M5Cardputer.update();
@@ -106,9 +108,12 @@ void loop() {
   if (state == STATE_WAKE) {
     //Serial.println("Loop - STATE_WAKE");
     checkPwngridGoneFriends();
-    advertise(current_channel++);
-    if (current_channel == 15) {
-      current_channel = 1;
+    if (now - lastRun >= 15000) {   // 15 000 ms = 15 s
+      lastRun = now;                // update timer
+      advertise(current_channel++);
+      if (current_channel == 15) {
+        current_channel = 1;
+      }
     }
   }
 

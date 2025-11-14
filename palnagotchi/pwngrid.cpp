@@ -1,11 +1,20 @@
+#include <Preferences.h>
+#include <memory>
 #include "pwngrid.h"
+#include "identity.h"
 #include "config.h"
+
+static const char* NVS_NS = "pwn-stats";
+
+const int away_threshold = 120000;
 
 unsigned long fullPacketStartTime = 0;
 const unsigned long PACKET_TIMEOUT_MS = 5000; // 5 seconds
 
-uint8_t pwngrid_friends_tot = 0;
-uint8_t pwngrid_friends_run = 0;
+int pwngrid_channel = 0;
+
+uint64_t pwngrid_friends_tot = 0;
+uint64_t pwngrid_friends_run = 0;
 
 pwngrid_peer pwngrid_peers[255];
 String pwngrid_last_friend_name = "";
@@ -15,22 +24,34 @@ uint8_t pwngrid_pwned_run;
 
 String fullPacket = "";
 
+static String identityHex;              // storage stabile
+
 DeviceConfig *config = getConfig();
 
-String reverse(const char * original) {
-  String reverse = "";
-  int str_len = String(original).length();
-
-  if(str_len > 0 && original != NULL)
-  {
-    for(int i = 0 ; i < str_len ; ++i)
-    {
-      reverse.concat(original[str_len - i - 2]);
-    }
-
-    //reverse[size - 1] = '\0';
+void loadStats() {
+  Preferences p;
+  if (!p.begin(NVS_NS, true)) {
+    Serial.println("Error trying to read stats");
+    return;
   }
-  return reverse;
+  pwngrid_friends_tot = p.getLong64("f_tot", 0);
+  pwngrid_pwned_tot  = p.getLong64("p_tot",  0);
+}
+
+void saveStats() {
+  Preferences p;
+  if (!p.begin(NVS_NS, false)) {
+    Serial.println("Error trying to save stats");
+    return;
+  }  
+  p.putLong64("f_tot", pwngrid_friends_tot);
+  p.putLong64("p_tot", pwngrid_pwned_tot);
+  p.end();
+  Serial.println(("Stats saved:"));
+  Serial.println("f_tot:");
+  Serial.println(pwngrid_friends_tot);
+  Serial.println("p_tot:");
+  Serial.println(pwngrid_pwned_tot);
 }
 
 // helper: format MAC -> string
@@ -43,7 +64,7 @@ void dbFriendTask(void *pv) {
   pwngrid_peer item;
   for (;;) {
     if (xQueueReceive(frQueue, &item, portMAX_DELAY) == pdTRUE) {
-      if (!mergeFriend(item)) {
+      if (!mergeFriend(item, pwngrid_friends_tot)) {
         Serial.println("Merge failed for friend");
       }
     }
@@ -96,7 +117,7 @@ void enqueue_packet_from_sniffer(const uint8_t *pkt, size_t len, const uint8_t m
   Serial.println("Packet added to queue");
 }
 
-void enqueue_friend_from_sniffer(pwngrid_peer a_friend) {
+void enqueue_friend_from_sniffer(pwngrid_peer &a_friend) {
   if (!frQueue) {
     Serial.println("enqueue_friend_from_sniffer error: frQueue is invalid");
     return;
@@ -107,24 +128,28 @@ void enqueue_friend_from_sniffer(pwngrid_peer a_friend) {
     Serial.println("Failed enqueuing friend");
     return;
   }
-  //Serial.println("Friend added to queue: " + a_friend.name);
 }
 
 uint8_t getPwngridTotalPeers() {
-  return pwngrid_friends_run;
-}
-uint8_t getPwngridRunTotalPeers() {
   return pwngrid_friends_tot;
 }
+
+uint8_t getPwngridRunTotalPeers() {
+  return pwngrid_friends_run;
+}
+
 String getPwngridLastFriendName() {
   return pwngrid_last_friend_name;
 }
+
 pwngrid_peer *getPwngridPeers() {
   return pwngrid_peers;
 }
+
 uint8_t getPwngridTotalPwned() {
-  return EEPROM.read(1);
+  return pwngrid_pwned_tot;
 }
+
 uint8_t getPwngridRunPwned() {
   return pwngrid_pwned_run;
 }
@@ -152,22 +177,26 @@ esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len,
 
 esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   //Serial.println("pwngridAdvertise...");
+  pwngrid_channel = channel;
   DynamicJsonDocument pal_json(2048);
   String pal_json_str = "";
 
+  auto id = ensurePwnIdentity(true);
   pal_json["pal"] = true;  // Also detect other Gotchis
   pal_json["name"] = getDeviceName();
   pal_json["face"] = face;
   pal_json["epoch"] = 1;
-  pal_json["grid_version"] = "1.10.3";
-  pal_json["identity"] =
-    "32e9f315e92d974342c93d0fd952a914bfb4e6838953536ea6f63d54db6b9610";
-  pal_json["pwnd_run"] = 0;
-  pal_json["pwnd_tot"] = 0;
-  pal_json["session_id"] = "a2:00:64:e6:0b:8b";
+  pal_json["grid_version"] = GRID_VERSION;
+  pal_json["identity"] = getFingerprintHex();
+   // "32e9f315e92d974342c93d0fd952a914bfb4e6838953536ea6f63d54db6b9610"; Stock
+   //  03af685e0e4ab18dd3c30163a5b0a7f2427bf77dc4298b2c672e8f48cfde75abc7 Generated Gotchi v1 - Bad
+   //  a32c32d84158865c188091a720c20fa366f836a1d272cc85a9c51cca0cca9cf0 Generated Gotchi v2 - Good
+  pal_json["pwnd_run"] = pwngrid_pwned_run;
+  pal_json["pwnd_tot"] = pwngrid_pwned_tot;
+  pal_json["session_id"] =  getSessionId();
   pal_json["timestamp"] = 0;
-  pal_json["uptime"] = 0;
-  pal_json["version"] = "1.8.4";
+  pal_json["uptime"] = millis() / 1000;
+  pal_json["version"] = PWNGRID_VERSION;
   pal_json["policy"]["advertise"] = true;
   pal_json["policy"]["bond_encounters_factor"] = 20000;
   pal_json["policy"]["bored_num_epochs"] = 0;
@@ -220,9 +249,7 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
 void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi, int channel) {
   String identity = json["identity"].as<String>();
 
-  //Serial.println("pwngridAddPeer...");
-
-  for (uint8_t i = 0; i < pwngrid_friends_tot; i++) {
+  for (uint8_t i = 0; i < pwngrid_friends_run; i++) {
     // Check if peer identity is already in peers array
     if (pwngrid_peers[i].identity == identity) {
       pwngrid_peers[i].last_ping = millis();
@@ -233,34 +260,34 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi, int channel) {
     }
   }
 
-  pwngrid_peers[pwngrid_friends_tot].rssi = rssi;
-  pwngrid_peers[pwngrid_friends_tot].last_ping = millis();
-  pwngrid_peers[pwngrid_friends_tot].gone = false;
-  pwngrid_peers[pwngrid_friends_tot].name = json["name"].as<String>();
-  pwngrid_peers[pwngrid_friends_tot].face = json["face"].as<String>();
-  pwngrid_peers[pwngrid_friends_tot].epoch = json["epoch"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].grid_version = json["grid_version"].as<String>();
-  pwngrid_peers[pwngrid_friends_tot].identity = identity;
-  pwngrid_peers[pwngrid_friends_tot].pwnd_run = json["pwnd_run"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].pwnd_tot = json["pwnd_tot"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].session_id = json["session_id"].as<String>();
-  pwngrid_peers[pwngrid_friends_tot].timestamp = json["timestamp"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].uptime = json["uptime"].as<int>();
-  pwngrid_peers[pwngrid_friends_tot].version = json["version"].as<String>();
-  pwngrid_peers[pwngrid_friends_tot].channel = channel;
 
-  pwngrid_last_friend_name = pwngrid_peers[pwngrid_friends_tot].name;
+  pwngrid_peers[pwngrid_friends_run].rssi = rssi;
+  pwngrid_peers[pwngrid_friends_run].last_ping = millis();
+  pwngrid_peers[pwngrid_friends_run].gone = false;
+  pwngrid_peers[pwngrid_friends_run].name = json["name"].as<String>();
+  pwngrid_peers[pwngrid_friends_run].face = json["face"].as<String>();
+  pwngrid_peers[pwngrid_friends_run].epoch = json["epoch"].as<int>();
+  pwngrid_peers[pwngrid_friends_run].grid_version = json["grid_version"].as<String>();
+  pwngrid_peers[pwngrid_friends_run].identity = identity;
+  pwngrid_peers[pwngrid_friends_run].pwnd_run = json["pwnd_run"].as<int>();
+  pwngrid_peers[pwngrid_friends_run].pwnd_tot = json["pwnd_tot"].as<int>();
+  pwngrid_peers[pwngrid_friends_run].session_id = json["session_id"].as<String>();
+  pwngrid_peers[pwngrid_friends_run].timestamp = json["timestamp"].as<int>();
+  pwngrid_peers[pwngrid_friends_run].uptime = json["uptime"].as<int>();
+  pwngrid_peers[pwngrid_friends_run].version = json["version"].as<String>();
+  pwngrid_peers[pwngrid_friends_run].channel = channel;
 
-  enqueue_friend_from_sniffer(pwngrid_peers[pwngrid_friends_tot]);
+  pwngrid_last_friend_name = String(pwngrid_peers[pwngrid_friends_run].name);
+  Serial.println("pwngrid_last_friend_name: " + pwngrid_last_friend_name);
 
-  EEPROM.write(0, pwngrid_friends_tot);
-  EEPROM.commit();
-
+  enqueue_friend_from_sniffer(pwngrid_peers[pwngrid_friends_run]);
   pwngrid_friends_run++;
-  pwngrid_friends_tot++;
+  saveStats();
 }
 
-const int away_threshold = 120000;
+int getPwngridChannel() {
+  return pwngrid_channel;
+}
 
 void checkPwngridGoneFriends() {
   for (uint8_t i = 0; i < pwngrid_friends_tot; i++) {
@@ -335,10 +362,10 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
 
   if (isEapol) {
     Serial.println("We have EAPOL");
-    drawMood(pwnagotchi_moods[10], "I love EAPOLs!", false);
+    drawMood(pwnagotchi_moods[10], "I love EAPOLs!", false, getPwngridLastFriendName(), getPwngridClosestRssi());
     pwngrid_pwned_run++;
     pwngrid_pwned_tot++;
-    EEPROM.write(1, pwngrid_pwned_tot);
+    saveStats();
     if (pkt_len < 24) return;
 
     // frame control (little-endian)
@@ -367,43 +394,23 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
         memcpy(bssid, addr4, 6);
       }
     } else {
-      // control frames: non gestiti
       memcpy(bssid, addr3, 6);  // fallback
     }
     enqueue_packet_from_sniffer(pkt, pkt_len, bssid, "EAPOL", (uint8_t)rx_channel);
   }
 
-  // --- ricerca RSN IE (element ID 0x30) per PMKID ---
-  // L'RSN IE può comparire nei management frames (beacon/probe/assoc/etc)
-  // e la struttura interna ha campi variabili. Fare parsing difensivo.
-  // Cerchiamo semplicemente il tag 0x30 (RSN) e poi scorriamo al suo interno
-  // per trovare PMKID count + PMKID list (se presenti).
-  //
-  // Nota: evitare di leggere oltre il buffer: assumiamo che il pacchetto abbia almeno 64 byte,
-  // ma facciamo controlli di lunghezza usando il length dichiarato se disponibile.
   size_t max_scan = 230;  // limite ragionevole per non scorrere troppo oltre
-  // se la struttura wifi_promiscuous_pkt_t fornisce una lunghezza, sostituire max_scan con quella.
-  // es.: size_t pkt_len = snifferPacket->rx_ctrl.sig_len; (dipende SDK)
 
   for (size_t i = 0; i + 1 < max_scan; ++i) {
-    // cerca element ID 0x30 (RSN IE)
     if (pkt[i] == 0x30) {
       // assicurarsi di poter leggere la lunghezza dell'IE
       uint8_t ie_len = pkt[i + 1];
       size_t ie_start = i + 2;
       size_t ie_end = ie_start + ie_len;
       if (ie_end > max_scan) {
-        // IE troncato o va oltre il buffer di scan: skip
         continue;
       }
 
-      // Parsing difensivo dell'RSN IE:
-      // struttura generale (semplificata):
-      // Version (2) | GroupCipher(4) |
-      // PairwiseCount(2) + PairwiseList(4*count) |
-      // AKMCount(2) + AKMList(4*count) |
-      // [RSNCapabilities(2)] |
-      // [PMKIDCount(2) + PMKIDList(16*count)]
       size_t pos = ie_start;
       if (pos + 2 > ie_end) continue;  // versione
       pos += 2;                        // version
@@ -496,10 +503,10 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
                 printHex(&pkt[pmkid_pos + k * 16], 16);
                 enqueue_packet_from_sniffer(pkt, 16, bssid, "PMKID", (uint8_t)rx_channel);
               }
-              drawMood(pwnagotchi_moods[10], "I love PMKIDs!", false);
+              drawMood(pwnagotchi_moods[10], "I love PMKIDs!", false, getPwngridLastFriendName(), getPwngridClosestRssi());
               pwngrid_pwned_run++;
               pwngrid_pwned_tot++;
-              EEPROM.write(1, pwngrid_pwned_tot);
+              saveStats();
               i = ie_end;  // salta avanti
               break;
             }
@@ -651,10 +658,15 @@ void initPwngrid() {
   int rc;
 
   Serial.println("Init Pwngrid");
-
+  loadStats();
   initDB();
   initDBWorkers();
 
+  // ora hai id.name, id.priv_hex, id.pub_hex (se micro-ecc), id.short_id, id.device_mac
+
+  auto id = ensurePwnIdentity(true);
+  //Serial.println("Identity: " + id.name + " - short_id: " + id.short_id + " pub_hex: " + id.pub_hex );
+  setDeviceName(id.name.c_str());
   // Disable WiFi logging
   esp_log_level_set("wifi", ESP_LOG_NONE);
 

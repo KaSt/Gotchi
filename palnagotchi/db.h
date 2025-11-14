@@ -7,7 +7,7 @@
 
 void initDB();
 bool addFriend(pwngrid_peer packet);
-bool mergeFriend(const pwngrid_peer &nf);
+bool mergeFriend(const pwngrid_peer &nf, uint64_t &pwngrid_friends_tot);
 bool addPacket(packet_item_t newFriend);
 int countPackets();
 int countFriends();

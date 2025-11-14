@@ -69,7 +69,7 @@ void initUi() {
   canvas_h = display_h * .8;
   canvas_center_x = display_w / 2;
   canvas_top_h = display_h * .1;
-  canvas_bot_h = display_h * .1;
+  canvas_bot_h = display_h * .2;
   canvas_peers_menu_h = display_h * .8;
   canvas_peers_menu_w = display_w * .8;
 
@@ -237,16 +237,15 @@ void updateUi(bool show_toolbars) {
 
   //Serial.println("UI - Draw canvas.");
 
-  drawTopCanvas();
-  drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(), getPwngridRunPwned(), getPwngridTotalPwned(),
-                   getPwngridLastFriendName(), getPwngridClosestRssi());
+  drawTopCanvas(getPwngridChannel());
+  drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(), getPwngridRunPwned(), getPwngridTotalPwned());
 
   //Serial.println("UI - Menu or Mood.");
 
   if (menu_open || isAPModeActive()) {
     drawMenu();
   } else {
-    drawMood(mood_face, mood_phrase, mood_broken);
+    drawMood(mood_face, mood_phrase, mood_broken, getPwngridLastFriendName(), getPwngridClosestRssi());
   }
 
   //Serial.println("UI - startWrite.");
@@ -262,7 +261,7 @@ void updateUi(bool show_toolbars) {
   //Serial.println("UI - Ended updateUi.");
 }
 
-void drawTopCanvas() {
+void drawTopCanvas(int channel) {
   canvas_top.fillSprite(BLACK);
   canvas_top.setTextSize(1);
   canvas_top.setTextColor(GREEN);
@@ -270,6 +269,7 @@ void drawTopCanvas() {
   canvas_top.setTextDatum(top_left);
 
   char top_text[25] = "CH * [F]";
+
   snprintf(top_text, sizeof(top_text), "CH * [%s]", (getPersonalityText()).c_str());
   canvas_top.drawString(top_text, 0, 3);
   canvas_top.setTextDatum(top_right);
@@ -309,20 +309,17 @@ String getRssiBars(signed int rssi) {
   return rssi_bars;
 }
 
-void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_run, uint8_t pwned_tot,
-                      String last_friend_name, signed int rssi) {
+void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_run, uint8_t pwned_tot) {
   canvas_bot.fillSprite(BLACK);
   canvas_bot.setTextSize(1);
   canvas_bot.setTextColor(GREEN);
   canvas_bot.setColor(GREEN);
   canvas_bot.setTextDatum(top_left);
 
-  String rssi_bars = getRssiBars(rssi);
   char stats[25] = "F 0 (0) P 0 (0)";
   if (friends_run > 0 || pwned_run > 0 || pwned_tot > 0) {
-    snprintf(stats, sizeof(stats), "F %d (%d) P %d (%d) [%s] %s",
-             friends_run, friends_tot, pwned_run, pwned_tot,
-             last_friend_name.c_str(), rssi_bars.c_str());
+    snprintf(stats, sizeof(stats), "F %d (%d) P %d (%d)",
+             friends_run, friends_tot, pwned_run, pwned_tot);
   }
 
   canvas_bot.drawString(stats, 0, 5);
@@ -333,7 +330,8 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_ru
   canvas_bot.drawLine(0, 0, display_w, 0);
 }
 
-void drawMood(String face, String phrase, bool broken) {
+void drawMood(String face, String phrase, bool broken,
+                      String last_friend_name, signed int rssi) {
   if (broken == true) {
     canvas_main.setTextColor(RED);
   } else {
@@ -343,15 +341,24 @@ void drawMood(String face, String phrase, bool broken) {
   canvas_main.setTextSize(4);
   canvas_main.setTextDatum(middle_center);
   canvas_main.fillSprite(BLACK);
-  canvas_main.drawString(face, canvas_center_x, canvas_h / 2);
+  canvas_main.drawString(face, canvas_center_x, canvas_h / 3);
   canvas_main.setTextDatum(bottom_center);
   canvas_main.setTextSize(1);
-  canvas_main.drawString(phrase, canvas_center_x, canvas_h - 23);
+  canvas_main.drawString(phrase, canvas_center_x, canvas_h - 35);
 
   // Add hint text at bottom
   canvas_main.setTextColor(TFT_DARKGRAY);
   canvas_main.setTextSize(1);
-  canvas_main.drawString("Long press for menu", canvas_center_x, canvas_h - 5);
+  canvas_main.drawString("Long press for menu", canvas_center_x, canvas_h - 20);
+
+  canvas_main.setTextDatum(bottom_left);
+  canvas_main.setTextColor(GREEN);
+  String rssi_bars = getRssiBars(rssi);
+  char friend_txt[45] = "";
+  if (last_friend_name.length()>0) {
+    snprintf(friend_txt, sizeof(friend_txt), "[%s] %s", rssi_bars.c_str(), last_friend_name.c_str());
+  }
+  canvas_main.drawString(friend_txt, 0, canvas_h - 5);
 }
 
 #define ROW_SIZE 40
