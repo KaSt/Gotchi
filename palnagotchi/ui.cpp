@@ -18,6 +18,9 @@ int32_t canvas_peers_menu_w;
 
 bool ninjaMode = false;
 
+long displayOnSince = millis();
+bool isDisplayOn = true;
+
 struct menu {
   char name[25];
   int command;
@@ -33,7 +36,7 @@ menu main_menu[] = {
 menu settings_menu[] = {
   { "Config (AP)", 40 },
   { "Personality", 42 },
-  { "Ninja Mode",  46},
+  { "Ninja Mode", 46 },
   { "Back", 41 },
 };
 
@@ -44,7 +47,7 @@ menu nearby_menu[] = {
 menu personality_menu[] = {
   { "Friendly", 43 },
   { "Sniffer", 44 },
-#ifdef I_CAN_BE_BAD  
+#ifdef I_CAN_BE_BAD
   { "Aggressive", 45 },
 #endif
   { "Back", 41 },
@@ -58,6 +61,19 @@ bool menu_open = false;
 uint8_t menu_current_cmd = 0;
 uint8_t menu_current_opt = 0;
 uint8_t menu_max_opt = 0;  // Track max options for current menu
+
+bool getIsDisplayOn() {
+  return isDisplayOn;
+}
+
+void setIsDisplayOn(bool _isDisplayOn) {
+  isDisplayOn = _isDisplayOn;
+  if (!isDisplayOn) {
+    M5.Display.sleep();
+  } else {
+    M5.Display.wakeup(); 
+  }
+}
 
 void initUi() {
   if (M5.Display.width() < M5.Display.height()) {
@@ -121,6 +137,19 @@ bool isPrevPressed() {
 
 void updateUi(bool show_toolbars) {
   ////Serial.println("UI - updateUi.");
+
+  if ((M5.BtnA.wasClicked() || M5.BtnB.wasClicked() || M5.BtnA.wasHold() || M5.BtnB.wasHold()) && !isDisplayOn) {
+    setIsDisplayOn(true);
+    displayOnSince = millis();
+  }
+
+  if (millis() - displayOnSince > SCREEN_TIMEOUT && isDisplayOn) {
+    setIsDisplayOn(false);
+  }
+
+  if (!isDisplayOn) {
+    return;
+  }
 
 #ifdef ARDUINO_M5STACK_CARDPUTER
   keyboard_changed = M5Cardputer.Keyboard.isChange();
@@ -212,13 +241,13 @@ void updateUi(bool show_toolbars) {
           } else if (menu_current_cmd == 44) {
             Serial.println("Clicked on Personality Passive.");
             setPersonality(SNIFFER);
-          } 
+          }
 #ifdef I_CAN_BE_BAD
           else if (menu_current_cmd == 45) {
             Serial.println("Clicked on Personality Aggressive.");
             setPersonality(AGGRESSIVE);
           }
-#endif          
+#endif
         default:
           menu_current_cmd = 0;
           menu_current_opt = 0;
@@ -270,6 +299,11 @@ void updateUi(bool show_toolbars) {
 }
 
 void drawTopCanvas(int channel) {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_top.fillSprite(BLACK);
   canvas_top.setTextSize(1);
   canvas_top.setTextColor(GREEN);
@@ -277,7 +311,7 @@ void drawTopCanvas(int channel) {
   canvas_top.setTextDatum(top_left);
 
   char top_text[25] = "CH * [F]";
-  String channel_text = String(channel).length() < 2 ? String("0") + String(channel): String(channel);
+  String channel_text = String(channel).length() < 2 ? String("0") + String(channel) : String(channel);
   snprintf(top_text, sizeof(top_text), "CH %s [%s]", channel_text, (getPersonalityText()).c_str());
   canvas_top.drawString(top_text, 0, 3);
   canvas_top.setTextDatum(top_right);
@@ -318,6 +352,11 @@ String getRssiBars(signed int rssi) {
 }
 
 void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_run, uint8_t pwned_tot) {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_bot.fillSprite(BLACK);
   canvas_bot.setTextSize(1);
   canvas_bot.setTextColor(GREEN);
@@ -328,14 +367,14 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_ru
     char sniffer_stats[25] = "F 0 (0) P 0 (0)";
     if (friends_run > 0 || pwned_run > 0 || pwned_tot > 0) {
       snprintf(sniffer_stats, sizeof(sniffer_stats), "F %d (%d) P %d (%d)",
-              friends_run, friends_tot, pwned_run, pwned_tot);
+               friends_run, friends_tot, pwned_run, pwned_tot);
     }
     canvas_bot.drawString(sniffer_stats, 0, 5);
   } else {
     char friendly_stats[25] = "FRIENDS 0 (0)";
     if (friends_run > 0) {
       snprintf(friendly_stats, sizeof(friendly_stats), "FRIENDS %d (%d)",
-              friends_run, friends_tot);
+               friends_run, friends_tot);
     }
 
     canvas_bot.drawString(friendly_stats, 0, 5);
@@ -348,7 +387,12 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_ru
 }
 
 void drawMood(String face, String phrase, bool broken,
-                      String last_friend_name, signed int rssi) {
+              String last_friend_name, signed int rssi) {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   if (broken == true) {
     canvas_main.setTextColor(RED);
   } else {
@@ -372,7 +416,7 @@ void drawMood(String face, String phrase, bool broken,
   canvas_main.setTextColor(GREEN);
   String rssi_bars = getRssiBars(rssi);
   char friend_txt[45] = "";
-  if (last_friend_name.length()>0) {
+  if (last_friend_name.length() > 0) {
     snprintf(friend_txt, sizeof(friend_txt), "[%s] %s", rssi_bars.c_str(), last_friend_name.c_str());
   }
   canvas_main.drawString(friend_txt, 0, canvas_h - 5);
@@ -382,6 +426,11 @@ void drawMood(String face, String phrase, bool broken,
 #define PADDING 10
 
 void drawMainMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.fillSprite(BLACK);
   if (display_w > 128) {
     canvas_main.setTextSize(2);
@@ -416,6 +465,11 @@ void drawMainMenu() {
 }
 
 void drawNearbyMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.clear(BLACK);
   canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
@@ -464,6 +518,11 @@ void drawNearbyMenu() {
 }
 
 void drawSettingsMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.fillSprite(BLACK);
   canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
@@ -494,6 +553,11 @@ void drawSettingsMenu() {
 }
 
 void drawAboutMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.clear(BLACK);
 
   // Title
@@ -516,6 +580,11 @@ void drawAboutMenu() {
 }
 
 void drawAPConfigMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.fillSprite(BLACK);
   canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
@@ -557,6 +626,11 @@ void drawAPConfigMenu() {
 }
 
 void drawPersonalityMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   canvas_main.fillSprite(BLACK);
   canvas_main.setTextSize(1.5);
   canvas_main.setTextColor(GREEN);
@@ -579,6 +653,11 @@ void drawPersonalityMenu() {
 }
 
 void drawMenu() {
+
+  if (!isDisplayOn) {
+    return;
+  }
+
   // Check if in AP config mode
   uint8_t device_state = getDeviceState();
   if (device_state == STATE_AP_CONFIG) {

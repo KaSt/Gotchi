@@ -4,6 +4,8 @@
 #include "mood.h"
 #include "pwngrid.h"
 
+#define SCREEN_TIMEOUT 30000
+
 // Forward declarations for state management
 void enterAPConfigMode();
 void exitAPConfigMode();
@@ -20,3 +22,6 @@ void updateUi(bool show_toolbars = false);
 
 void setNinjaMode(bool _ninjaMode);
 bool getNinjaMode();
+
+bool getIsDisplayOn();
+void setIsDisplayOn(bool _isDisplayOn);
