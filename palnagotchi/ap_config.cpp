@@ -362,13 +362,15 @@ const char* html_page = R"rawliteral(
               <label for="friendly">🤝 Friendly - Just looking for friends</label>
             </div>
             <div class="radio-option">
-              <input type="radio" id="passive" name="personality" value="passive">
-              <label for="passive">👀 Passive - Quietly sniffing around</label>
+              <input type="radio" id="sniffer" name="personality" value="sniffer">
+              <label for="sniffer">👀 Sniffer - Quietly sniffing around</label>
             </div>
+#ifdef I_CAN_BE_BAD            
             <div class="radio-option">
               <input type="radio" id="aggressive" name="personality" value="aggressive">
               <label for="aggressive">💥 Aggressive - Actively hunting WiFi</label>
             </div>
+#endif            
           </div>
         </div>
         
@@ -845,10 +847,12 @@ void handleGetConfig() {
   
   // Map personality enum to string
   String personalityStr = "friendly";
-  if (config->personality == PASSIVE) {
-    personalityStr = "passive";
+  if (config->personality == SNIFFER) {
+    personalityStr = "sniffer";
+#ifdef I_CAN_BE_BAD
   } else if (config->personality == AGGRESSIVE) {
     personalityStr = "aggressive";
+#endif
   }
   
   String json = "{";
@@ -919,10 +923,12 @@ void handleSaveConfig() {
       
       if (personality_value == "friendly") {
         config->personality = FRIENDLY;
-      } else if (personality_value == "passive") {
-        config->personality = PASSIVE;
+      } else if (personality_value == "sniffer") {
+        config->personality = SNIFFER;
+#ifdef I_CAN_BE_BAD       
       } else if (personality_value == "aggressive") {
         config->personality = AGGRESSIVE;
+#endif        
       } else {
         config->personality = FRIENDLY;
       }

@@ -535,7 +535,12 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
     const WifiMgmtHdr *hdr = &ipkt->hdr;
 
     //Check if we do something about EAPOLs or PMKIDs
-    if (config->personality == PASSIVE || config->personality == AGGRESSIVE) {
+    if (config->personality == SNIFFER 
+    #ifdef I_CAN_BE_BAD
+        || config->personality == AGGRESSIVE) {
+    #else
+    )  {      
+    #endif         
       handlePacket(snifferPacket);
     }
 

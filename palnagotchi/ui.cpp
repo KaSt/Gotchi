@@ -16,6 +16,8 @@ int32_t canvas_bot_h;
 int32_t canvas_peers_menu_h;
 int32_t canvas_peers_menu_w;
 
+bool ninjaMode = false;
+
 struct menu {
   char name[25];
   int command;
@@ -29,8 +31,9 @@ menu main_menu[] = {
 };
 
 menu settings_menu[] = {
-  { "AP Mode", 40 },
+  { "Config (AP)", 40 },
   { "Personality", 42 },
+  { "Ninja Mode",  46},
   { "Back", 41 },
 };
 
@@ -40,8 +43,10 @@ menu nearby_menu[] = {
 
 menu personality_menu[] = {
   { "Friendly", 43 },
-  { "Passive", 44 },
+  { "Sniffer", 44 },
+#ifdef I_CAN_BE_BAD  
   { "Aggressive", 45 },
+#endif
   { "Back", 41 },
 };
 
@@ -206,11 +211,14 @@ void updateUi(bool show_toolbars) {
             setPersonality(FRIENDLY);
           } else if (menu_current_cmd == 44) {
             Serial.println("Clicked on Personality Passive.");
-            setPersonality(PASSIVE);
-          } else if (menu_current_cmd == 45) {
+            setPersonality(SNIFFER);
+          } 
+#ifdef I_CAN_BE_BAD
+          else if (menu_current_cmd == 45) {
             Serial.println("Clicked on Personality Aggressive.");
             setPersonality(AGGRESSIVE);
           }
+#endif          
         default:
           menu_current_cmd = 0;
           menu_current_opt = 0;
@@ -316,13 +324,22 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_ru
   canvas_bot.setColor(GREEN);
   canvas_bot.setTextDatum(top_left);
 
-  char stats[25] = "F 0 (0) P 0 (0)";
-  if (friends_run > 0 || pwned_run > 0 || pwned_tot > 0) {
-    snprintf(stats, sizeof(stats), "F %d (%d) P %d (%d)",
-             friends_run, friends_tot, pwned_run, pwned_tot);
-  }
+  if (getPersonality() == SNIFFER) {
+    char sniffer_stats[25] = "F 0 (0) P 0 (0)";
+    if (friends_run > 0 || pwned_run > 0 || pwned_tot > 0) {
+      snprintf(sniffer_stats, sizeof(sniffer_stats), "F %d (%d) P %d (%d)",
+              friends_run, friends_tot, pwned_run, pwned_tot);
+    }
+    canvas_bot.drawString(sniffer_stats, 0, 5);
+  } else {
+    char friendly_stats[25] = "FRIENDS 0 (0)";
+    if (friends_run > 0) {
+      snprintf(friendly_stats, sizeof(friendly_stats), "FRIENDS %d (%d)",
+              friends_run, friends_tot);
+    }
 
-  canvas_bot.drawString(stats, 0, 5);
+    canvas_bot.drawString(friendly_stats, 0, 5);
+  }
   canvas_bot.setTextDatum(top_right);
   if (display_w > 128) {
     canvas_bot.drawString("NOT AI", display_w, 5);
@@ -610,4 +627,12 @@ void drawMenu() {
       drawMainMenu();
       break;
   }
+}
+
+void setNinjaMode(bool _ninjaMode) {
+  ninjaMode = _ninjaMode;
+}
+
+bool getNinjaMode() {
+  return ninjaMode;
 }

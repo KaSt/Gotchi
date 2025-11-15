@@ -17,3 +17,6 @@ void drawTopCanvas(int channel);
 void drawBottomCanvas(uint8_t friends_run = 0, uint8_t friends_tot = 0, uint8_t pwned_run = 0, uint8_t pwned_tot = 0);
 void drawMenu();
 void updateUi(bool show_toolbars = false);
+
+void setNinjaMode(bool _ninjaMode);
+bool getNinjaMode();
