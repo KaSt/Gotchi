@@ -6,8 +6,9 @@
 #include "device_state.h"
 #include "config.h"
 #include "ap_config.h"
-
+#include "pwn.h"
 #include "ui.h"
+#include "ai.h"
 
 uint8_t state;
 unsigned long lastRun = 0;
@@ -32,8 +33,9 @@ void setup() {
   initConfig();
   initAPConfig();
   initMood();
-  initPwngrid();
+  initPwning();
   initUi();
+  initBrain();
   state = STATE_INIT;
 }
 
@@ -47,7 +49,7 @@ void wakeUp() {
     //Serial.println("WakeUp - Updating UI...");
     updateUi();
     //Serial.println("WakeUp - Delaying 1250...");
-    delay(1250);
+    //delay(1250);
   }
 }
 
@@ -110,10 +112,7 @@ void loop() {
     checkPwngridGoneFriends();
     if (now - lastRun >= 15000) {   // 15 000 ms = 15 s
       lastRun = now;                // update timer
-      advertise(current_channel++);
-      if (current_channel == 15) {
-        current_channel = 1;
-      }
+      advertise(wifi_get_channel());
     }
   }
 
@@ -130,7 +129,7 @@ void enterAPConfigMode() {
 void exitAPConfigMode() {
   stopAPMode();
   // Reinitialize WiFi for normal operation
-  initPwngrid();
+  initPwning();
   state = STATE_WAKE;
 }
 

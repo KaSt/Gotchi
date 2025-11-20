@@ -274,7 +274,7 @@ void updateUi(bool show_toolbars) {
 
   //Serial.println("UI - Draw canvas.");
 
-  drawTopCanvas(getPwngridChannel());
+  drawTopCanvas(wifi_get_channel());
   drawBottomCanvas(getPwngridRunTotalPeers(), getPwngridTotalPeers(), getPwngridRunPwned(), getPwngridTotalPwned());
 
   //Serial.println("UI - Menu or Mood.");
@@ -380,9 +380,9 @@ void drawBottomCanvas(uint8_t friends_run, uint8_t friends_tot, uint8_t pwned_ru
     canvas_bot.drawString(friendly_stats, 0, 5);
   }
   canvas_bot.setTextDatum(top_right);
-  if (display_w > 128) {
-    canvas_bot.drawString("NOT AI", display_w, 5);
-  }
+  //if (display_w > 128) {
+     canvas_bot.drawString("AI", display_w, 5);
+  // }
   canvas_bot.drawLine(0, 0, display_w, 0);
 }
 

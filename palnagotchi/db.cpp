@@ -102,7 +102,9 @@ Serial.println(String("Checking Friend name: ") + nf.name);
 
   if (!found) {
     // Add
-    File out2 = LittleFS.open(tmpPath.c_str(), FILE_WRITE); // apre in append su ESP32
+    pwngrid_friends_tot++;
+
+    File out2 = LittleFS.open(tmpPath.c_str(), FILE_APPEND);
     if (!out2) {
       Serial.println("mergeFriend: Error reopening temp for append");
       LittleFS.remove(tmpPath.c_str());

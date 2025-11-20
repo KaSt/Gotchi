@@ -2,7 +2,7 @@
   #include "M5Cardputer.h"
 #endif
 #include "mood.h"
-#include "pwngrid.h"
+#include "pwn.h"
 
 #define SCREEN_TIMEOUT 30000
 

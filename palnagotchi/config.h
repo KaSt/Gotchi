@@ -6,9 +6,10 @@
 
 // EEPROM memory layout
 #define EEPROM_SIZE 512
-#define EEPROM_FRIENDS_ADDR 0
-#define EEPROM_CONFIG_MAGIC_ADDR 1
-#define EEPROM_CONFIG_START_ADDR 5
+#define EEPROM_CONFIG_MAGIC_ADDR   0       // 1 byte
+#define EEPROM_FRIENDS_START_ADDR  4       // 8 bytes: 4–11
+#define EEPROM_PWNED_START_ADDR    12      // 8 bytes: 12–19
+#define EEPROM_CONFIG_START_ADDR   20      // config starts here
 #define CONFIG_MAGIC_VALUE 0xAB
 
 // Personality
@@ -38,5 +39,10 @@ int getPersonality();
 void setPersonality(const int personality);
 String getPersonalityText();
 void setIdentity(const char* identity );
+
+void initStats();
+void setStats(uint64_t _friends_tot, uint64_t _pwned_tot);
+uint64_t getFriendsTot();
+uint64_t getPwnedTot();
 
 #endif

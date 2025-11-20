@@ -7,6 +7,28 @@
 DeviceConfig device_config;
 static String s_identity;  // storage interno sicuro
 
+void initStats() {
+  uint64_t friends_tot = 0;
+  uint64_t pwned_tot = 0;
+  EEPROM.writeLong64(EEPROM_FRIENDS_START_ADDR, friends_tot);
+  EEPROM.writeLong64(EEPROM_PWNED_START_ADDR, pwned_tot);
+  EEPROM.commit();
+}
+
+void setStats(uint64_t _friends_tot, uint64_t _pwned_tot) {
+  EEPROM.writeLong64(EEPROM_FRIENDS_START_ADDR, _friends_tot);
+  EEPROM.writeLong64(EEPROM_PWNED_START_ADDR, _pwned_tot);
+  EEPROM.commit();
+}
+
+uint64_t getFriendsTot() {
+  return EEPROM.readLong64(EEPROM_FRIENDS_START_ADDR);
+}
+
+uint64_t getPwnedTot() {
+  return EEPROM.readLong64(EEPROM_PWNED_START_ADDR);
+}
+
 void initConfig() {
   Serial.println("initConfig...");
   EEPROM.begin(EEPROM_SIZE);
@@ -23,6 +45,7 @@ void loadConfig() {
     EEPROM.get(EEPROM_CONFIG_START_ADDR, device_config);
   } else {
     // First time setup - initialize with defaults
+    initStats();
     resetConfig();
     saveConfig();
   }
@@ -101,4 +124,7 @@ void setPersonality(int personality) {
   saveConfig();
   Serial.println("setPersonality done.");
 }
+
+
+
 
