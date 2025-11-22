@@ -12,6 +12,7 @@ void exitAPConfigMode();
 uint8_t getDeviceState();
 
 void initUi();
+void initMenus();
 void wakeUp();
 void drawMood(String face, String phrase, bool broken = false,
                       String last_friend_name = "", signed int rssi = -1000);

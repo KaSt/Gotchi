@@ -2,6 +2,7 @@
 #include "device_state.h"
 #include "config.h"
 #include "ap_config.h"
+#include "menu_system.h"
 
 M5Canvas canvas_top(&M5.Display);
 M5Canvas canvas_main(&M5.Display);
@@ -21,43 +22,27 @@ bool ninjaMode = false;
 long displayOnSince = millis();
 bool isDisplayOn = true;
 
-struct menu {
-  char name[25];
-  int command;
+// New menu system instances
+MenuSystem* mainMenu = nullptr;
+MenuSystem* settingsMenu = nullptr;
+MenuSystem* nearbyMenu = nullptr;
+MenuSystem* personalityMenu = nullptr;
+MenuSystem* currentMenu = nullptr;
+
+enum MenuState {
+  MENU_NONE = 0,
+  MENU_MAIN = 1,
+  MENU_FRIENDS = 2,
+  MENU_SETTINGS = 4,
+  MENU_ABOUT = 8,
+  MENU_AP_CONFIG = 40,
+  MENU_PERSONALITY = 42,
+  MENU_NINJA_MODE = 45,
+  MENU_BACK = 99
 };
 
-menu main_menu[] = {
-  { "Friends", 2 },
-  { "Settings", 4 },
-  { "About", 8 },
-  { "Back", 99 }  // Added back option
-};
-
-menu settings_menu[] = {
-  { "Config (AP)", 40 },
-  { "Personality", 42 },
-  { "Ninja Mode", 45 },
-  { "Back", 41 },
-};
-
-menu nearby_menu[] = {
-  { "Back", 41 },
-};
-
-menu personality_menu[] = {
-  { "Friendly", 43 },
-  { "AI", 44 },
-  { "Back", 41 },
-};
-
-int main_menu_len = sizeof(main_menu) / sizeof(menu);
-int settings_menu_len = sizeof(settings_menu) / sizeof(menu);
-int personality_menu_len = sizeof(personality_menu) / sizeof(menu);
-
+MenuState activeMenuState = MENU_NONE;
 bool menu_open = false;
-uint8_t menu_current_cmd = 0;
-uint8_t menu_current_opt = 0;
-uint8_t menu_max_opt = 0;  // Track max options for current menu
 
 bool getIsDisplayOn() {
   return isDisplayOn;
@@ -94,6 +79,192 @@ void initUi() {
   canvas_top.createSprite(display_w, canvas_top_h);
   canvas_bot.createSprite(display_w, canvas_bot_h);
   canvas_main.createSprite(display_w, canvas_h);
+  
+  // Initialize menus
+  initMenus();
+}
+
+bool keyboard_changed = false;
+
+// Forward declarations for menu actions
+void closeMenu();
+void openMainMenu();
+void openFriendsMenu();
+void openSettingsMenu();
+void openAboutMenu();
+void openPersonalityMenu();
+void openAPConfigMenu();
+void toggleNinjaMode();
+void setPersonalityFriendly();
+void setPersonalityAI();
+
+// Initialize all menus
+void initMenus() {
+  mainMenu = new MenuSystem(&canvas_main);
+  mainMenu->setTitle("MAIN MENU");
+  mainMenu->setColors(TFT_GREEN, TFT_DARKGREEN, TFT_BLACK, TFT_YELLOW);
+  
+  settingsMenu = new MenuSystem(&canvas_main);
+  settingsMenu->setTitle("SETTINGS");
+  settingsMenu->setColors(TFT_GREEN, TFT_DARKGREEN, TFT_BLACK, TFT_YELLOW);
+  
+  nearbyMenu = new MenuSystem(&canvas_main);
+  nearbyMenu->setTitle("NEARBY");
+  nearbyMenu->setColors(TFT_GREEN, TFT_DARKGREEN, TFT_BLACK, TFT_YELLOW);
+  
+  personalityMenu = new MenuSystem(&canvas_main);
+  personalityMenu->setTitle("PERSONALITY");
+  personalityMenu->setColors(TFT_GREEN, TFT_DARKGREEN, TFT_BLACK, TFT_YELLOW);
+  
+  // Build main menu
+  mainMenu->addItem("Friends", openFriendsMenu);
+  mainMenu->addItem("Settings", openSettingsMenu);
+  mainMenu->addItem("About", openAboutMenu);
+  mainMenu->addBackItem(closeMenu);
+  
+  // Build settings menu
+  settingsMenu->addItem("Config (AP)", openAPConfigMenu);
+  settingsMenu->addItem("Personality", openPersonalityMenu);
+  settingsMenu->addItem("Ninja Mode", toggleNinjaMode);
+  settingsMenu->addBackItem(openMainMenu);
+  
+  // Build personality menu
+  personalityMenu->addItem("Friendly", setPersonalityFriendly);
+  personalityMenu->addItem("AI", setPersonalityAI);
+  personalityMenu->addBackItem(openSettingsMenu);
+}
+
+// Menu action implementations
+void closeMenu() {
+  menu_open = false;
+  activeMenuState = MENU_NONE;
+  currentMenu = nullptr;
+}
+
+void openMainMenu() {
+  activeMenuState = MENU_MAIN;
+  currentMenu = mainMenu;
+  menu_open = true;
+}
+
+void openFriendsMenu() {
+  activeMenuState = MENU_FRIENDS;
+  
+  // Rebuild nearby menu with current peers
+  nearbyMenu->clearItems();
+  
+  pwngrid_peer* pwngrid_peers = getPwngridPeers();
+  uint64_t len = getPwngridRunTotalPeers();
+  
+  if (len == 0) {
+    nearbyMenu->addItem("No friends yet...", [](){});
+  } else {
+    for (uint8_t i = 0; i < len && i < 20; i++) {  // Limit to 20 items
+      String peerLabel = String(pwngrid_peers[i].name) + " [" + getRssiBars(pwngrid_peers[i].rssi) + "]";
+      nearbyMenu->addItem(peerLabel, [](){});  // No action for now
+    }
+  }
+  
+  nearbyMenu->addBackItem(openMainMenu);
+  currentMenu = nearbyMenu;
+}
+
+void openSettingsMenu() {
+  activeMenuState = MENU_SETTINGS;
+  currentMenu = settingsMenu;
+}
+
+void openAboutMenu() {
+  activeMenuState = MENU_ABOUT;
+  
+  // Show about screen (not a menu)
+  canvas_main.fillSprite(TFT_BLACK);
+  canvas_main.setTextColor(TFT_YELLOW);
+  canvas_main.setTextSize(2);
+  canvas_main.setTextDatum(top_center);
+  canvas_main.drawString("Palnagotchi", canvas_center_x, 10);
+  
+  canvas_main.setTextColor(TFT_GREEN);
+  canvas_main.setTextSize(1);
+  canvas_main.setTextDatum(top_left);
+  canvas_main.setCursor(10, 40);
+  canvas_main.println("AI-powered WiFi companion");
+  canvas_main.println("");
+  canvas_main.println("Features:");
+  canvas_main.println("- RL-based channel hopping");
+  canvas_main.println("- Handshake collection");
+  canvas_main.println("- Friend discovery");
+  canvas_main.println("");
+  canvas_main.setTextColor(TFT_DARKGREY);
+  canvas_main.println("Hold button to go back");
+  
+  canvas_main.pushSprite(0, canvas_top_h);
+  
+  // Wait for button press to go back
+  delay(300);  // Debounce
+  while (!toggleMenuBtnPressed()) {
+    M5.update();
+    delay(10);
+  }
+  
+  openMainMenu();
+}
+
+void openPersonalityMenu() {
+  activeMenuState = MENU_PERSONALITY;
+  currentMenu = personalityMenu;
+}
+
+void openAPConfigMenu() {
+  activeMenuState = MENU_AP_CONFIG;
+  closeMenu();
+  enterAPConfigMode();
+}
+
+void toggleNinjaMode() {
+  ninjaMode = !ninjaMode;
+  setNinjaMode(ninjaMode);
+  
+  // Show confirmation
+  canvas_main.fillSprite(TFT_BLACK);
+  canvas_main.setTextColor(TFT_YELLOW);
+  canvas_main.setTextSize(2);
+  canvas_main.setTextDatum(middle_center);
+  canvas_main.drawString(ninjaMode ? "Ninja: ON" : "Ninja: OFF", canvas_center_x, canvas_h / 2);
+  canvas_main.pushSprite(0, canvas_top_h);
+  delay(1000);
+  
+  openSettingsMenu();
+}
+
+void setPersonalityFriendly() {
+  setPersonality("friendly");
+  
+  // Show confirmation
+  canvas_main.fillSprite(TFT_BLACK);
+  canvas_main.setTextColor(TFT_GREEN);
+  canvas_main.setTextSize(2);
+  canvas_main.setTextDatum(middle_center);
+  canvas_main.drawString("Set: Friendly", canvas_center_x, canvas_h / 2);
+  canvas_main.pushSprite(0, canvas_top_h);
+  delay(1000);
+  
+  openPersonalityMenu();
+}
+
+void setPersonalityAI() {
+  setPersonality("ai");
+  
+  // Show confirmation
+  canvas_main.fillSprite(TFT_BLACK);
+  canvas_main.setTextColor(TFT_GREEN);
+  canvas_main.setTextSize(2);
+  canvas_main.setTextDatum(middle_center);
+  canvas_main.drawString("Set: AI", canvas_center_x, canvas_h / 2);
+  canvas_main.pushSprite(0, canvas_top_h);
+  delay(1000);
+  
+  openPersonalityMenu();
 }
 
 bool keyboard_changed = false;
@@ -156,108 +327,35 @@ void updateUi(bool show_toolbars) {
 
   // Long press toggles menu or selects item
   if (toggleMenuBtnPressed()) {
-    //Serial.println("UI - Long press detected");
-
     // If in AP config mode, exit it
     if (isAPModeActive()) {
       exitAPConfigMode();
       menu_open = false;
-      menu_current_cmd = 0;
-      menu_current_opt = 0;
       return;
     }
 
-    // If menu is NOT open, open it
+    // If menu is NOT open, open main menu
     if (!menu_open) {
-      //Serial.println("UI - Opening menu");
-      menu_open = true;
-      menu_current_cmd = 0;
-      menu_current_opt = 0;
-      menu_max_opt = main_menu_len;
+      openMainMenu();
     }
     // If menu IS open, select current option
-    else {
-      //Serial.printf("UI - Selecting menu option: cmd=%d, opt=%d\n", menu_current_cmd, menu_current_opt);
-
-      // Handle selection based on current menu
-      switch (menu_current_cmd) {
-        case 0:  // Main menu
-          menu_current_cmd = main_menu[menu_current_opt].command;
-          menu_current_opt = 0;
-
-          // Set max options for new menu
-          if (menu_current_cmd == 2) {                     // Nearby menu
-            menu_max_opt = getPwngridRunTotalPeers() + 1;  // +1 for Back
-          } else if (menu_current_cmd == 4) {              // Settings menu
-            menu_max_opt = settings_menu_len;
-          } else if (menu_current_cmd == 8) {  // About - just back
-            menu_max_opt = 1;
-          } else if (menu_current_cmd == 99) {  // Back to main
-            menu_open = false;
-            menu_current_cmd = 0;
-            menu_current_opt = 0;
-          }
-          break;
-
-        case 2:  // Nearby menu
-          // If "Back" is selected (last option)
-          if (menu_current_opt >= getPwngridRunTotalPeers()) {
-            menu_current_cmd = 0;
-            menu_current_opt = 0;
-            menu_max_opt = main_menu_len;
-          }
-          // Otherwise viewing a peer, just stay here
-          break;
-
-        case 4:  // Settings menu
-          menu_current_cmd = settings_menu[menu_current_opt].command;
-          menu_current_opt = 0;
-
-          if (menu_current_cmd == 40) {  // WiFi Config
-            // Will be handled in drawMenu
-          } else if (menu_current_cmd == 41) {  // Back
-            menu_current_cmd = 0;
-            menu_current_opt = 0;
-            menu_max_opt = main_menu_len;
-          }
-          break;
-
-        case 8:  // About menu - long press goes back
-          menu_current_cmd = 0;
-          menu_current_opt = 0;
-          menu_max_opt = main_menu_len;
-          break;
-
-        case 42:  // Personality menu - Choose Gotchi's personality.
-          menu_current_cmd = personality_menu[menu_current_opt].command;
-          menu_current_opt = 0;
-
-          if (menu_current_cmd == 43) {
-            Serial.println("Clicked on Personality [Friendly]");
-            setPersonality(FRIENDLY);
-          } else if (menu_current_cmd == 44) {
-            Serial.println("Clicked on Personality [AI]");
-            setPersonality(AI);
-          }
-          break;
-
-        default:
-          menu_current_cmd = 0;
-          menu_current_opt = 0;
-          menu_max_opt = main_menu_len;
-          break;
-      }
+    else if (currentMenu != nullptr) {
+      currentMenu->select();
     }
+    
+    displayOnSince = millis();  // Reset display timeout
   }
 
   // Short press cycles through options
-  if (isNextPressed() && menu_open) {
-    //Serial.println("UI - Short press - next option");
-    menu_current_opt++;
-    if (menu_current_opt >= menu_max_opt) {
-      menu_current_opt = 0;  // Wrap around
-    }
-    //Serial.printf("UI - New option: %d (max: %d)\n", menu_current_opt, menu_max_opt);
+  if (isNextPressed() && menu_open && currentMenu != nullptr) {
+    currentMenu->navigateDown();
+    displayOnSince = millis();
+  }
+  
+  // Previous button (if available)
+  if (isPrevPressed() && menu_open && currentMenu != nullptr) {
+    currentMenu->navigateUp();
+    displayOnSince = millis();
   }
 
   uint8_t mood_id = getCurrentMoodId();
@@ -648,7 +746,6 @@ void drawPersonalityMenu() {
 }
 
 void drawMenu() {
-
   if (!isDisplayOn) {
     return;
   }
@@ -663,43 +760,13 @@ void drawMenu() {
     return;
   }
 
-  // Draw appropriate menu based on current command
-  switch (menu_current_cmd) {
-    case 0:
-      drawMainMenu();
-      break;
-    case 2:
-      drawNearbyMenu();
-      break;
-    case 4:
-      drawSettingsMenu();
-      break;
-    case 8:
-      drawAboutMenu();
-      break;
-    case 40:
-      // WiFi Config (AP) selected - enter AP mode
-      enterAPConfigMode();
-      break;
-    case 41:
-      // Back selected - should have been handled in updateUi
-      menu_current_cmd = 0;
-      menu_current_opt = 0;
-      drawMainMenu();
-      break;
-    case 42:
-      // Personality setting
-      drawPersonalityMenu();
-      break;
-    case 99:
-      // Back to main screen
-      menu_open = false;
-      menu_current_cmd = 0;
-      menu_current_opt = 0;
-      break;
-    default:
-      drawMainMenu();
-      break;
+  // Draw current menu using new menu system
+  if (currentMenu != nullptr) {
+    currentMenu->draw();
+    canvas_main.pushSprite(0, canvas_top_h);
+  } else {
+    // Fallback to main menu if no menu is set
+    openMainMenu();
   }
 }
 
