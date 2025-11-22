@@ -1,18 +1,10 @@
 #ifndef _PWN_H_
 #define _PWN_H_
 
-#include <stdio.h>
-#include <stdlib.h>
-#include "ArduinoJson.h"
-#include "EEPROM.h"
-#include <SPI.h>
-#include <FS.h>
-#include <iterator>
 #include <vector>
 #include <set>
-#include "M5Unified.h"
+#include "ArduinoJson.h"
 #include "esp_wifi.h"
-#include <esp_netif.h>
 #include "esp_wifi_types.h"
 #include "freertos/FreeRTOS.h"
 #include "pwnagotchi.h"
@@ -22,11 +14,10 @@
 
 #define GRID_VERSION    "1.10.3"
 #define PWNGRID_VERSION "1.8.4"
+#define MAX_PKT_SAVE    800
 
 extern void drawMood(String face, String phrase, bool broken,
                       String last_friend_name, signed int rssi);
-
-#define MAX_PKT_SAVE 800
 
 struct BeaconEntry {
     uint8_t mac[6]{};
@@ -39,9 +30,11 @@ struct BeaconEntry {
     }
 };
 
+// WiFi channel management
 int wifi_get_channel();
 void wifi_set_channel(int ch);
 
+// Pwngrid system
 void initPwning();
 esp_err_t pwngridAdvertise(uint8_t channel, String face);
 pwngrid_peer* getPwngridPeers();
@@ -52,8 +45,11 @@ signed int getPwngridClosestRssi();
 void checkPwngridGoneFriends();
 uint8_t getPwngridRunPwned();
 uint8_t getPwngridTotalPwned();
-void performDeauthCycle();
-Environment &getEnv();
 
+// Attack operations
+void performDeauthCycle();
+
+// Environment
+Environment &getEnv();
 
 #endif
