@@ -58,9 +58,10 @@ jobs:
           fi
           
           # Create release notes
-          RELEASE_NOTES="## Gotchi Firmware v${{ steps.version.outputs.version }}
+          cat > release_notes.md << 'EOF'
+## Gotchi Firmware v${{ steps.version.outputs.version }}
 
-**Build:** \`${{ steps.version.outputs.commit_hash }}\`
+**Build:** `${{ steps.version.outputs.commit_hash }}`
 **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
 ### Changes
@@ -91,27 +92,27 @@ ${CHANGELOG}
 Visit [https://kast.github.io/Atomgotchi/flasher/](https://kast.github.io/Atomgotchi/flasher/) to flash directly from your browser using Chrome/Edge.
 
 **Option 2: Manual Flash**
-\`\`\`bash
+```bash
 # Download the firmware for your device
 # Flash using esptool.py
 esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash 0x0 firmware.bin
-\`\`\`
+```
 
 **Option 3: PlatformIO**
-\`\`\`bash
+```bash
 git clone https://github.com/KaSt/Atomgotchi.git
 cd Atomgotchi
 pio run -e m5stack-cardputer -t upload
-\`\`\`
+```
 
 ### Notes
 - First boot may take longer due to filesystem initialization
 - All firmwares include AI Q-Learning and Friendly modes
 - GPS and SD card support included (auto-detected)
-- See [README.md](https://github.com/KaSt/Atomgotchi) for full documentation"
+- See [README.md](https://github.com/KaSt/Atomgotchi) for full documentation
+EOF
 
-          # Save to file and output
-          echo "$RELEASE_NOTES" > release_notes.md
+          # Display release notes
           cat release_notes.md
           
           # For GitHub output, we need to handle multiline
