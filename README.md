@@ -192,7 +192,7 @@ Main Menu
 
 The easiest way to install Gotchi is using our web-based flasher:
 
-**[👉 Flash Your Device Now](https://kast.github.io/Atomgotchi/flasher/)**
+**[👉 Flash Your Device Now](https://kast.github.io/Gotchi/)**
 
 1. Open the link above in **Chrome or Edge** browser
 2. Select your device from the visual grid

@@ -118,7 +118,7 @@
    After successful build:
    
    ✓ Release created: https://github.com/KaSt/Atomgotchi/releases/tag/v1.0.0
-   ✓ Web flasher live: https://kast.github.io/Atomgotchi/flasher/
+   ✓ Web flasher live: https://kast.github.io/Gotchi/
    ✓ Firmware binaries downloadable
    ✓ Changelog auto-generated
 
