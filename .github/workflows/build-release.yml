@@ -64,65 +64,65 @@ jobs:
           
           # Create release notes
           cat > release_notes.md << 'RELEASENOTES'
-## Gotchi Firmware v$VERSION
-
-**Build:** `$COMMIT`
-**Date:** $BUILD_DATE
-
-### Changes
-
-$CHANGELOG
-
-### Supported Devices
-
-#### M5Stack
-- M5Stack Cardputer (ESP32-S3, 240x135, keyboard) ⭐ **Recommended**
-- M5StickC Plus2 (ESP32-PICO, 240x135, buttons)
-- M5Atom S3 / S3R (ESP32-S3, 128x128, touch)
-- M5Stack Core / Core2 / CoreS3 (320x240 displays)
-- M5Stack Fire, Paper, and more
-
-#### LilyGo
-- T-Display S3 (ESP32-S3, 320x170)
-- T-Display (ESP32, 240x135)
-- T-Watch S3, T-Embed, T-Dongle S3, T-QT Pro
-
-#### Heltec & Generic
-- Heltec WiFi LoRa 32 V3 (with LoRa radio)
-- ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1
-
-### Installation
-
-**Option 1: Web Flasher (Recommended)**
-Visit [https://kast.github.io/Atomgotchi/flasher/](https://kast.github.io/Atomgotchi/flasher/) to flash directly from your browser using Chrome/Edge.
-
-**Option 2: Manual Flash**
-```bash
-# Download the firmware for your device
-# Flash using esptool.py
-esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash 0x0 firmware.bin
-```
-
-**Option 3: PlatformIO**
-```bash
-git clone https://github.com/KaSt/Atomgotchi.git
-cd Atomgotchi
-pio run -e m5stack-cardputer -t upload
-```
-
-### Notes
-- First boot may take longer due to filesystem initialization
-- All firmwares include AI Q-Learning and Friendly modes
-- GPS and SD card support included (auto-detected)
-- See [README.md](https://github.com/KaSt/Atomgotchi) for full documentation
-RELEASENOTES
-
+          ## Gotchi Firmware v$VERSION
+          
+          **Build:** `$COMMIT`  
+          **Date:** $BUILD_DATE
+          
+          ### Changes
+          
+          $CHANGELOG
+          
+          ### Supported Devices
+          
+          #### M5Stack
+          - M5Stack Cardputer (ESP32-S3, 240x135, keyboard) ⭐ **Recommended**
+          - M5StickC Plus2 (ESP32-PICO, 240x135, buttons)
+          - M5Atom S3 / S3R (ESP32-S3, 128x128, touch)
+          - M5Stack Core / Core2 / CoreS3 (320x240 displays)
+          - M5Stack Fire, Paper, and more
+          
+          #### LilyGo
+          - T-Display S3 (ESP32-S3, 320x170)
+          - T-Display (ESP32, 240x135)
+          - T-Watch S3, T-Embed, T-Dongle S3, T-QT Pro
+          
+          #### Heltec & Generic
+          - Heltec WiFi LoRa 32 V3 (with LoRa radio)
+          - ESP32-S3-DevKitC-1, ESP32-C3-DevKitM-1
+          
+          ### Installation
+          
+          **Option 1: Web Flasher (Recommended)**  
+          Visit https://kast.github.io/Atomgotchi/flasher/ to flash directly from your browser using Chrome/Edge.
+          
+          **Option 2: Manual Flash**
+          ```bash
+          # Download the firmware for your device
+          # Flash using esptool.py
+          esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash 0x0 firmware.bin
+          ```
+          
+          **Option 3: PlatformIO**
+          ```bash
+          git clone https://github.com/KaSt/Atomgotchi.git
+          cd Atomgotchi
+          pio run -e m5stack-cardputer -t upload
+          ```
+          
+          ### Notes
+          - First boot may take longer due to filesystem initialization
+          - All firmwares include AI Q-Learning and Friendly modes
+          - GPS and SD card support included (auto-detected)
+          - See README.md (https://github.com/KaSt/Atomgotchi) for full documentation
+          RELEASENOTES
+          
           # Now substitute variables
           sed -i "s/\$VERSION/${VERSION}/g" release_notes.md
           sed -i "s/\$COMMIT/${COMMIT}/g" release_notes.md
           sed -i "s/\$BUILD_DATE/${BUILD_DATE}/g" release_notes.md
           sed -i "s/\$CHANGELOG/${CHANGELOG}/g" release_notes.md
-
+          
           # Display release notes
           cat release_notes.md
           
@@ -211,7 +211,7 @@ RELEASENOTES
           # Copy and rename firmware with version and commit hash
           cp "$FIRMWARE_PATH" "firmware-output/gotchi-${BOARD}-${VERSION}-${COMMIT}.bin"
           
-          # Also create a "latest" symlink name for web flasher
+          # Also create a "latest" name for web flasher
           cp "$FIRMWARE_PATH" "firmware-output/gotchi-${BOARD}-latest.bin"
           
           # Copy bootloader and partitions if they exist
@@ -243,7 +243,7 @@ RELEASENOTES
               }
             ]
           }
-MANIFEST
+          MANIFEST
           
           ls -lh firmware-output/
 
@@ -340,7 +340,7 @@ MANIFEST
             "updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "manifests": $(find flasher/firmware -name "manifest-*.json" -exec basename {} \; | jq -R . | jq -s .)
           }
-INDEXJSON
+          INDEXJSON
           
           ls -lh flasher/firmware/
 
